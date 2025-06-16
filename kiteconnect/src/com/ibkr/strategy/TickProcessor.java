@@ -59,10 +59,11 @@ public class TickProcessor {
                 if (currentPosition.isLong() && tick.getLastTradedPrice() <= stopLossPrice) {
                     stopLossHit = true;
                 }
-                // else if (!currentPosition.isLong() && tick.getLastTradedPrice() >= stopLossPrice) {
-                //     // Logic for short position stop-loss, if shorting is implemented
-                //     // stopLossHit = true;
-                // }
+                else if (!currentPosition.isLong() && tick.getLastTradedPrice() >= stopLossPrice) {
+                    logger.info("Short position for {} stop-loss check: Current LTP {} >= SL Price {}",
+                        tick.getSymbol(), tick.getLastTradedPrice(), stopLossPrice);
+                    stopLossHit = true;
+                }
 
                 if (stopLossHit) {
                     logger.warn("STOP-LOSS HIT for symbol {}: LTP {} breached SL price {}. Position: {}",
@@ -254,34 +255,83 @@ public class TickProcessor {
     }
 
     private void updatePosition(TradingSignal signal, Tick tick) {
-        if (signal.getAction() == TradeAction.BUY) {
-            double entryVolatility = 0.0;
-            if (appContext.getVolatilityAnalyzer() != null && tick != null) {
-                entryVolatility = appContext.getVolatilityAnalyzer().getCurrentVolatility(tick);
-                logger.info("Captured entry volatility for {} at {}: {:.4f}",
-                    signal.getSymbol(), signal.getPrice(), entryVolatility);
-            } else {
-                logger.warn("Could not calculate entry volatility for {}: VolatilityAnalyzer or Tick is null. Using 0.0.", signal.getSymbol());
-            }
+        if (signal == null || tick == null) {
+            logger.warn("updatePosition called with null signal or tick. Signal: {}, Tick: {}", signal, tick);
+            return;
+        }
 
-            TradingPosition newPosition = new TradingPosition(
-                    signal.getInstrumentToken(),
-                    signal.getSymbol(),
-                    signal.getPrice(),
-                    signal.getQuantity(),
-                    entryVolatility, // Use calculated entry volatility
-                    true, // Assuming it's a long position
-                    signal.getAction()
-            );
-            positions.put(signal.getInstrumentToken(), newPosition);
-            logger.info("Position UPDATED for {}: New position: {}", signal.getSymbol(), newPosition);
-        } else if (signal.getAction() == TradeAction.SELL) { // Assuming SELL here means closing a long position
-            TradingPosition removedPosition = positions.remove(signal.getInstrumentToken());
-            if (removedPosition != null) {
-                logger.info("Position REMOVED for {}: Details: {}", signal.getSymbol(), removedPosition);
+        long instrumentToken = signal.getInstrumentToken();
+        if (instrumentToken == 0 && signal.getSymbol() != null) {
+            Integer token = appContext.getInstrumentRegistry().getTickerId(signal.getSymbol());
+            if (token != null) {
+                instrumentToken = token;
             } else {
-                logger.warn("Attempted to remove position for {}, but no active position found.", signal.getSymbol());
+                logger.error("Cannot update position for signal {}: Instrument token is 0 and symbol {} not found in registry.", signal, signal.getSymbol());
+                return;
             }
+        } else if (instrumentToken == 0) {
+             logger.error("Cannot update position for signal {}: Instrument token is 0 and no symbol provided in signal to look up.", signal);
+             return;
+        }
+
+        TradingPosition existingPosition = positions.get(instrumentToken);
+        String symbol = signal.getSymbol() != null ? signal.getSymbol() : (existingPosition != null ? existingPosition.getSymbol() : tick.getSymbol());
+
+        double entryVolatility = 0.0;
+        if (appContext.getVolatilityAnalyzer() != null && tick != null) {
+            entryVolatility = appContext.getVolatilityAnalyzer().getCurrentVolatility(tick);
+        } else {
+            logger.warn("Could not calculate entry volatility for {}: VolatilityAnalyzer or Tick is null during updatePosition. Using 0.0.", symbol);
+        }
+
+        if (signal.getAction() == TradeAction.BUY) {
+            if (existingPosition != null && existingPosition.isInPosition()) {
+                if (existingPosition.isLong()) {
+                    logger.warn("Received BUY signal for {} which is already long. No action taken (pyramiding not implemented). Position: {}", symbol, existingPosition);
+                } else {
+                    logger.info("BUY signal to cover existing short position for {}. Old Position: {}", symbol, existingPosition);
+                    positions.remove(instrumentToken);
+                    logger.info("Short position for {} closed by BUY signal.", symbol);
+                }
+            } else {
+                TradingPosition newPosition = new TradingPosition(
+                        instrumentToken,
+                        symbol,
+                        signal.getPrice(),
+                        signal.getQuantity(),
+                        entryVolatility,
+                        true,
+                        signal.getAction()
+                );
+                positions.put(instrumentToken, newPosition);
+                logger.info("New LONG position opened for {}: {}", symbol, newPosition);
+            }
+        } else if (signal.getAction() == TradeAction.SELL) {
+            if (existingPosition != null && existingPosition.isInPosition()) {
+                if (!existingPosition.isLong()) {
+                    logger.warn("Received SELL signal for {} which is already short. No action taken (pyramiding not implemented). Position: {}", symbol, existingPosition);
+                } else {
+                    logger.info("SELL signal to close existing long position for {}. Old Position: {}", symbol, existingPosition);
+                    positions.remove(instrumentToken);
+                    logger.info("Long position for {} closed by SELL signal.", symbol);
+                }
+            } else {
+                TradingPosition newPosition = new TradingPosition(
+                        instrumentToken,
+                        symbol,
+                        signal.getPrice(),
+                        signal.getQuantity(),
+                        entryVolatility,
+                        false,
+                        signal.getAction()
+                );
+                positions.put(instrumentToken, newPosition);
+                logger.info("New SHORT position opened for {}: {}", symbol, newPosition);
+            }
+        } else if (signal.getAction() == TradeAction.HOLD || signal.getAction() == TradeAction.HALT) {
+            logger.debug("HOLD or HALT signal received for {}. No position change.", symbol);
+        } else {
+            logger.warn("Unhandled TradeAction {} in updatePosition for symbol {}", signal.getAction(), symbol);
         }
     }
 
