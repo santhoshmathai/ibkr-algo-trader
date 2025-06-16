@@ -396,6 +396,7 @@ public class IBClient implements EWrapper {
         PreviousDayData data = historicalDataRequests.get(reqId);
         if (data != null) {
             data.setPreviousHigh(bar.high());
+            data.setPreviousLow(bar.low()); // **** ADDED THIS LINE ****
             data.setPreviousClose(bar.close());
             // Assuming only one bar is expected for "1 D" duration
             successfullyFetchedPrevDayData.put(data.getSymbol(), data);
@@ -459,7 +460,7 @@ public class IBClient implements EWrapper {
             Contract contract = createStockContract(symbol, "SMART"); // Assuming SMART for all US stocks
             int reqId = appContext.getNextRequestId(); // Changed
 
-            PreviousDayData placeholder = new PreviousDayData(symbol, 0, 0);
+            PreviousDayData placeholder = new PreviousDayData(symbol, 0, 0, 0); // Add 0 for previousLow
             historicalDataRequests.put(reqId, placeholder);
 
             logger.debug("Requesting historical data for {}: ReqId={}, Contract={}, EndDT={}, Duration={}, BarSize={}, WhatToShow={}, UseRTH={}, Format={}",
