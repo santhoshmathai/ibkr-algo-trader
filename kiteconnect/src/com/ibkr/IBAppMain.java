@@ -29,9 +29,9 @@ public class IBAppMain {
         // Attempt to connect and subscribe
         try {
             // host, port, clientId from config or AppContext eventually
-            String host = "127.0.0.1";
-            int port = 7496; // Default TWS port for paper trading
-            int clientId = 0;
+            String host = appContext.getTwsHost();
+            int port = appContext.getTwsPort();
+            int clientId = appContext.getTwsClientId();
             logger.info("Connecting to TWS on {}:{} with clientId {}", host, port, clientId);
             client.connect(host, port, clientId);
             // Assuming connect is synchronous enough or connectAck will confirm.
@@ -41,6 +41,11 @@ public class IBAppMain {
             // It's crucial that IBClient.startMessageProcessing() is called to handle incoming messages.
             logger.info("Starting IBClient message processing thread...");
             client.startMessageProcessing();
+
+            // Initiate historical data fetch after connection and message processing setup
+            logger.info("Attempting to initiate historical data fetch...");
+            client.initiateHistoricalDataFetch();
+            // Note: This call is blocking as per fetchPreviousDayDataForAllStocks implementation.
 
             // Subscribe to instruments from AppContext's list if desired
             Set<String> stocksToSubscribe = appContext.getTop100USStocks(); // Example
@@ -57,6 +62,19 @@ public class IBAppMain {
         }
         // The application will continue running due to the message processing thread.
         // Add shutdown hooks if needed for graceful exit.
+
+        final AppContext finalAppContext = appContext; // Effectively final for use in lambda
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            logger.info("Shutdown hook initiated by JVM...");
+            if (finalAppContext != null) {
+                logger.info("Calling AppContext shutdown...");
+                finalAppContext.shutdown();
+            } else {
+                logger.warn("AppContext was null when shutdown hook ran.");
+            }
+            logger.info("Shutdown hook processing completed.");
+        }, "IBAppShutdownHook")); // Giving the hook thread a name
+
         logger.info("IBAppMain setup complete. Application is running.");
     }
 }

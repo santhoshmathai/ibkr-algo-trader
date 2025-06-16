@@ -33,10 +33,12 @@ import java.time.ZonedDateTime; // Added
 import java.time.ZoneId; // Added
 import java.time.LocalTime; // Added
 import java.time.DayOfWeek; // Added
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class AppContext {
     private static final Logger logger = LoggerFactory.getLogger(AppContext.class);
+    private final AtomicInteger nextRequestId = new AtomicInteger(1001);
 
     // Core Data and Client Infrastructure
     private final InstrumentRegistry instrumentRegistry;
@@ -71,16 +73,50 @@ public class AppContext {
     private final TickProcessor tickProcessor;
 
     private final Set<String> top100USStocks;
-    private Map<String, PreviousDayData> previousDayDataMap; // Added field
+    private Map<String, PreviousDayData> previousDayDataMap = new ConcurrentHashMap<>(); // Initialized
+
+    // TWS Connection Parameters
+    private final String twsHost;
+    private final int twsPort;
+    private final int twsClientId;
 
     public AppContext() {
         // Configuration Data
-        this.top100USStocks = loadTop100USStocks();
-        Map<String, List<String>> sectorToStocksMap = loadSectorToStocksMap();
+        Properties properties = new Properties();
+        String propertiesFileName = "app.properties";
+        try (InputStream inputStream = new FileInputStream(propertiesFileName)) {
+            properties.load(inputStream);
+        } catch (IOException e) {
+            logger.error("Failed to load {} in AppContext constructor. Error: {}. Using defaults for TWS config.", propertiesFileName, e.getMessage(), e);
+            // Properties will be empty, defaults will be used.
+        }
+
+        this.twsHost = properties.getProperty("tws.host", "127.0.0.1");
+        int tempPort;
+        try {
+            tempPort = Integer.parseInt(properties.getProperty("tws.port", "7496"));
+        } catch (NumberFormatException e) {
+            logger.error("Invalid format for 'tws.port' in app.properties. Using default 7496.", e);
+            tempPort = 7496;
+        }
+        this.twsPort = tempPort;
+
+        int tempClientId;
+        try {
+            tempClientId = Integer.parseInt(properties.getProperty("tws.clientId", "0"));
+        } catch (NumberFormatException e) {
+            logger.error("Invalid format for 'tws.clientId' in app.properties. Using default 0.", e);
+            tempClientId = 0;
+        }
+        this.twsClientId = tempClientId;
+        logger.info("Loaded TWS connection params: Host={}, Port={}, ClientId={}", this.twsHost, this.twsPort, this.twsClientId);
+
+        this.top100USStocks = loadTop100USStocks(properties); // Pass loaded properties
+        Map<String, List<String>> sectorToStocksMap = loadSectorToStocksMap(properties); // Pass loaded properties
         Map<String, String> symbolToSectorMap = loadSymbolToSectorMap(sectorToStocksMap); // Pass the loaded map
 
         // Level 0: No dependencies or only external config
-        this.instrumentRegistry = new InstrumentRegistry();
+        this.instrumentRegistry = new InstrumentRegistry(this);
         this.marketSentimentAnalyzer = new MarketSentimentAnalyzer(this, this.top100USStocks); // Pass AppContext
         // Ensure SectorStrengthAnalyzer gets valid, though possibly empty, maps
         this.sectorStrengthAnalyzer = new SectorStrengthAnalyzer(
@@ -117,7 +153,12 @@ public class AppContext {
             this.breakoutSignalGenerator, this.riskManager, this.tradingEngine, this.ibOrderExecutor, this // Injected AppContext
         );
         this.ibClient = new IBClient(
-            this.instrumentRegistry, this.tickAggregator, this.tickProcessor, this.ibOrderExecutor, this.marketDataHandler // Injected marketDataHandler
+            this, // Pass AppContext
+            this.instrumentRegistry,
+            this.tickAggregator,
+            this.tickProcessor,
+            this.ibOrderExecutor,
+            this.marketDataHandler
         );
 
         // EClientSocket and EReaderSignal are created inside IBClient. Get them.
@@ -131,90 +172,56 @@ public class AppContext {
         this.ibConnectionManager = new IBConnectionManager(this.clientSocket);
         this.ibClient.setConnectionManager(this.ibConnectionManager);
 
-        // Fetch Previous Day Data - This needs to be called after IBClient is somewhat ready for requests,
-        // typically after connection. For now, we'll call it here.
-        // A better place might be in IBAppMain after connect() and startMessageProcessing()
-        // or if IBClient exposes a method that's called post-connection.
-        // For this subtask, let's assume it's called here for simplicity of AppContext setup.
-        // This will be problematic if fetchPreviousDayDataForAllStocks requires an active connection.
-        // TODO: Revisit placement of fetchPreviousDayDataForAllStocks if connection is required first.
-        logger.info("Attempting to fetch previous day data for {} stocks.", this.top100USStocks.size());
-        if (this.ibClient != null && this.top100USStocks != null && !this.top100USStocks.isEmpty()) {
-            try {
-                // This is a blocking call as implemented in the plan for IBClient
-                this.previousDayDataMap = this.ibClient.fetchPreviousDayDataForAllStocks(this.top100USStocks);
-                logger.info("Fetched previous day data for {} symbols.", this.previousDayDataMap.size());
-            } catch (Exception e) { // Catching general Exception as await might throw InterruptedException
-                logger.error("Error fetching previous day data: {}", e.getMessage(), e);
-                this.previousDayDataMap = new HashMap<>(); // Initialize to empty on error
-            }
-        } else {
-            logger.warn("IBClient or stock list is null/empty. Skipping fetch of previous day data.");
-            this.previousDayDataMap = new HashMap<>(); // Initialize to empty
-        }
+        // Removed historical data fetching from here. It will be initiated from IBAppMain.
     }
 
-    private Set<String> loadTop100USStocks() {
-        Properties properties = new Properties();
-        String propertiesFileName = "app.properties";
+    // Modified to accept Properties object
+    private Set<String> loadTop100USStocks(Properties properties) {
         Set<String> stocks = new HashSet<>();
+        String stocksProperty = properties.getProperty("us.stocks.top100");
 
-        try (InputStream inputStream = new FileInputStream(propertiesFileName)) {
-            properties.load(inputStream);
-            String stocksProperty = properties.getProperty("us.stocks.top100");
-
-            if (stocksProperty != null && !stocksProperty.trim().isEmpty()) {
+        if (stocksProperty != null && !stocksProperty.trim().isEmpty()) {
                 stocks.addAll(Arrays.asList(stocksProperty.split(",")));
-                logger.info("Loaded {} stock symbols from {} (us.stocks.top100).", stocks.size(), propertiesFileName);
+                logger.info("Loaded {} stock symbols from app.properties (us.stocks.top100).", stocks.size());
             } else {
-                logger.warn("'us.stocks.top100' property is missing or empty in {}. Using empty set.", propertiesFileName);
+                logger.warn("'us.stocks.top100' property is missing or empty in app.properties. Using empty set.");
                 // Optionally, return a default minimal set:
                 // return Set.of("AAPL", "MSFT");
             }
-        } catch (IOException e) {
-            logger.error("Failed to load {} from filesystem. Error: {}. Using empty set.", propertiesFileName, e.getMessage(), e);
-            // Optionally, return a default minimal set:
-            // return Set.of("AAPL", "MSFT");
-        }
+        // Removed IOException catch as Properties object is passed in
         return stocks;
     }
 
-    private Map<String, List<String>> loadSectorToStocksMap() {
-        Properties properties = new Properties();
-        String propertiesFileName = "app.properties";
+    // Modified to accept Properties object
+    private Map<String, List<String>> loadSectorToStocksMap(Properties properties) {
         Map<String, List<String>> sectorToStocksMap = new HashMap<>();
-        logger.info("Loading sector to stocks map from {}", propertiesFileName);
+        logger.info("Loading sector to stocks map from app.properties");
 
-        try (InputStream inputStream = new FileInputStream(propertiesFileName)) {
-            properties.load(inputStream);
-            for (String propertyName : properties.stringPropertyNames()) {
-                if (propertyName.startsWith("sector.") && propertyName.endsWith(".stocks")) {
-                    // Extract sector name: sector.TECHNOLOGY.stocks -> TECHNOLOGY
-                    String sectorName = propertyName.substring("sector.".length(), propertyName.lastIndexOf(".stocks"));
-                    String stocksListStr = properties.getProperty(propertyName);
-                    if (stocksListStr != null && !stocksListStr.trim().isEmpty()) {
-                        List<String> stocksInSector = Arrays.asList(stocksListStr.split(","))
-                                .stream()
-                                .map(String::trim)
-                                .filter(s -> !s.isEmpty())
-                                .collect(Collectors.toList());
-                        if (!stocksInSector.isEmpty()) {
-                            sectorToStocksMap.put(sectorName.toUpperCase(), stocksInSector);
-                            logger.debug("Loaded sector {}: {} stocks", sectorName.toUpperCase(), stocksInSector.size());
-                        } else {
-                            logger.warn("Sector {} defined in {} but has no stocks listed.", sectorName.toUpperCase(), propertiesFileName);
-                            sectorToStocksMap.put(sectorName.toUpperCase(), Collections.emptyList());
-                        }
+        for (String propertyName : properties.stringPropertyNames()) {
+            if (propertyName.startsWith("sector.") && propertyName.endsWith(".stocks")) {
+                // Extract sector name: sector.TECHNOLOGY.stocks -> TECHNOLOGY
+                String sectorName = propertyName.substring("sector.".length(), propertyName.lastIndexOf(".stocks"));
+                String stocksListStr = properties.getProperty(propertyName);
+                if (stocksListStr != null && !stocksListStr.trim().isEmpty()) {
+                    List<String> stocksInSector = Arrays.asList(stocksListStr.split(","))
+                            .stream()
+                            .map(String::trim)
+                            .filter(s -> !s.isEmpty())
+                            .collect(Collectors.toList());
+                    if (!stocksInSector.isEmpty()) {
+                        sectorToStocksMap.put(sectorName.toUpperCase(), stocksInSector);
+                        logger.debug("Loaded sector {}: {} stocks", sectorName.toUpperCase(), stocksInSector.size());
                     } else {
-                        logger.warn("Sector {} has empty stock list in {}.", sectorName.toUpperCase(), propertiesFileName);
+                        logger.warn("Sector {} defined in app.properties but has no stocks listed.", sectorName.toUpperCase());
                         sectorToStocksMap.put(sectorName.toUpperCase(), Collections.emptyList());
                     }
+                } else {
+                    logger.warn("Sector {} has empty stock list in app.properties.", sectorName.toUpperCase());
+                    sectorToStocksMap.put(sectorName.toUpperCase(), Collections.emptyList());
                 }
             }
-        } catch (IOException e) {
-            logger.error("Failed to load {} for sector definitions. Error: {}. Returning empty map.", propertiesFileName, e.getMessage(), e);
-            return new HashMap<>(); // Return empty map on error
         }
+        // Removed IOException catch as Properties object is passed in
         logger.info("Loaded {} sectors from properties file.", sectorToStocksMap.size());
         return sectorToStocksMap;
     }
@@ -311,6 +318,51 @@ public class AppContext {
             logger.error("Error checking market opening window: {}", e.getMessage(), e);
             return false; // Default to false on error
         }
+    }
+
+    public int getNextRequestId() {
+        return nextRequestId.getAndIncrement();
+    }
+
+    public String getTwsHost() { return twsHost; }
+    public int getTwsPort() { return twsPort; }
+    public int getTwsClientId() { return twsClientId; }
+
+    public void setPreviousDayDataMap(Map<String, PreviousDayData> previousDayDataMap) {
+        this.previousDayDataMap.clear(); // Clear old data
+        if (previousDayDataMap != null) {
+            this.previousDayDataMap.putAll(previousDayDataMap);
+        }
+        logger.info("AppContext.previousDayDataMap updated. Size: {}", this.previousDayDataMap.size());
+    }
+
+    public Map<String, PreviousDayData> getPreviousDayDataMap() { // Getter might be useful for IBClient
+        return this.previousDayDataMap;
+    }
+
+    public void shutdown() {
+        logger.info("Shutting down AppContext...");
+
+        // Shutdown IBClient first to stop market data flow and order processing
+        if (this.ibClient != null) {
+            logger.info("Shutting down IBClient from AppContext...");
+            this.ibClient.shutdown();
+        } else {
+            logger.warn("IBClient was null in AppContext during shutdown.");
+        }
+
+        // Shutdown MarketDataHandler to flush any pending writes
+        if (this.marketDataHandler != null) {
+            logger.info("Shutting down MarketDataHandler from AppContext...");
+            this.marketDataHandler.shutdown();
+        } else {
+            logger.warn("MarketDataHandler was null in AppContext during shutdown.");
+        }
+
+        // Shutdown other resources if any were added that need it
+        // e.g., other ExecutorServices managed by AppContext directly
+
+        logger.info("AppContext shutdown process completed.");
     }
     // Add other getters as necessary
 }

@@ -3,6 +3,7 @@ package com.ibkr.core;
 import com.ib.client.*;
 import com.ib.client.OrderState; // Added for openOrder
 import com.ib.client.Execution;
+import com.ibkr.AppContext; // Added
 import com.ibkr.IBOrderExecutor;
 import com.ibkr.data.InstrumentRegistry;
 import com.ibkr.data.MarketDataHandler;
@@ -35,6 +36,7 @@ public class IBClient implements EWrapper {
     private final EClientSocket clientSocket = new EClientSocket(this, readerSignal);
     private final ExecutorService executor;
     private MarketDataHandler marketDataHandler;
+    private final AppContext appContext; // Added
 
     // For historical data fetching
     private final Map<Integer, PreviousDayData> historicalDataRequests = new ConcurrentHashMap<>();
@@ -43,9 +45,10 @@ public class IBClient implements EWrapper {
     private static final DateTimeFormatter IB_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd  HH:mm:ss");
 
 
-    public IBClient(InstrumentRegistry instrumentRegistry, TickAggregator tickAggregator,
+    public IBClient(AppContext appContext, InstrumentRegistry instrumentRegistry, TickAggregator tickAggregator,
                     TickProcessor tickProcessor, IBOrderExecutor orderExecutor,
                     MarketDataHandler marketDataHandler) {
+        this.appContext = appContext; // Added
         this.instrumentRegistry = instrumentRegistry;
         this.tickAggregator = tickAggregator;
         this.tickProcessor = tickProcessor;
@@ -452,12 +455,9 @@ public class IBClient implements EWrapper {
         // A dedicated AtomicInteger for historicalReqId would be better.
         // int nextHistReqId = instrumentRegistry.getNextReqId(); // Assuming such a method or manage IDs differently
 
-        int currentHistReqId = 50000; // Starting base for historical data reqIds to avoid collision with mkt data
-
         for (String symbol : symbols) {
             Contract contract = createStockContract(symbol, "SMART"); // Assuming SMART for all US stocks
-            // int reqId = instrumentRegistry.registerInstrument(contract, true); // Need a way to get unique reqId
-            int reqId = currentHistReqId++;
+            int reqId = appContext.getNextRequestId(); // Changed
 
             PreviousDayData placeholder = new PreviousDayData(symbol, 0, 0);
             historicalDataRequests.put(reqId, placeholder);
@@ -483,6 +483,45 @@ public class IBClient implements EWrapper {
         historicalDataRequests.clear();
 
         return new ConcurrentHashMap<>(successfullyFetchedPrevDayData); // Return a copy
+    }
+
+    public boolean isConnected() {
+        return clientSocket != null && clientSocket.isConnected();
+    }
+
+    public void initiateHistoricalDataFetch() {
+        if (this.appContext == null) {
+            logger.error("AppContext is null in IBClient. Cannot fetch historical data.");
+            return;
+        }
+
+        Set<String> symbolsToFetch = appContext.getTop100USStocks();
+        if (!isConnected()) {
+            logger.error("Cannot fetch historical data. IBClient not connected.");
+            if (appContext.getPreviousDayDataMap() != null) {
+                 appContext.getPreviousDayDataMap().clear();
+            }
+            return;
+        }
+
+        logger.info("Attempting to fetch previous day data for {} stocks via initiateHistoricalDataFetch.", symbolsToFetch.size());
+        if (symbolsToFetch != null && !symbolsToFetch.isEmpty()) {
+            try {
+                Map<String, PreviousDayData> fetchedData = this.fetchPreviousDayDataForAllStocks(symbolsToFetch);
+                appContext.setPreviousDayDataMap(fetchedData);
+                logger.info("Historical data fetch initiated and completed. {} symbols processed.", fetchedData.size());
+            } catch (Exception e) {
+                logger.error("Error during historical data fetch initiation: {}", e.getMessage(), e);
+                if (appContext.getPreviousDayDataMap() != null) {
+                     appContext.getPreviousDayDataMap().clear();
+                }
+            }
+        } else {
+            logger.warn("Stock list is null/empty from AppContext. Skipping fetch of previous day data.");
+            if (appContext.getPreviousDayDataMap() != null) {
+                appContext.getPreviousDayDataMap().clear();
+            }
+        }
     }
 
     @Override
@@ -771,5 +810,31 @@ public class IBClient implements EWrapper {
 
     }
 
+    public void shutdown() {
+        logger.info("Shutting down IBClient...");
+        if (clientSocket.isConnected()) {
+            logger.info("Disconnecting TWS EClientSocket...");
+            clientSocket.eDisconnect();
+        }
+
+        logger.info("Shutting down IBClient message processing executor...");
+        executor.shutdown(); // Disable new tasks from being submitted
+        try {
+            // Wait a while for existing tasks to terminate
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                logger.warn("IBClient executor did not terminate in 5 seconds. Forcing shutdown...");
+                executor.shutdownNow(); // Cancel currently executing tasks
+                // Wait a while for tasks to respond to being cancelled
+                if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                    logger.error("IBClient executor did not terminate even after forcing.");
+                }
+            }
+        } catch (InterruptedException ie) {
+            logger.error("IBClient executor shutdown interrupted. Forcing shutdown.", ie);
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+        logger.info("IBClient shutdown complete.");
+    }
     // ... other EWrapper methods
 }
