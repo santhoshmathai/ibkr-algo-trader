@@ -192,20 +192,23 @@ public class TickProcessor {
         TradingSignal engineSignal = tradingEngine.generateSignal(tick, currentPosition);
         logger.debug("TradingEngine signal for {}: {}", tick.getSymbol(), engineSignal.getAction());
 
-        TradingSignal finalSignal = breakoutSignal; // Prioritize breakout by default
-
-        if (breakoutSignal.getAction() == TradeAction.HOLD || breakoutSignal.getAction() == null) {
+        TradingSignal finalSignal;
+        if (engineSignal.getAction() == TradeAction.HALT) {
+            finalSignal = engineSignal; // HALT signal takes absolute precedence
+            logger.debug("Engine signal is HALT for {}. Overriding any breakout signal.", tick.getSymbol());
+        } else if (breakoutSignal.getAction() != TradeAction.HOLD && breakoutSignal.getAction() != null) {
+            // If breakout is active (BUY/SELL) and engine is not HALT, prioritize breakout.
+            finalSignal = breakoutSignal;
+            logger.debug("Breakout signal is active for {}. Prioritizing Breakout (Engine was not HALT). Engine: {}", tick.getSymbol(), engineSignal.getAction());
+        } else {
+            // If breakout is HOLD or null, and engine is not HALT, use engine's signal.
             finalSignal = engineSignal;
-        } else if (engineSignal.getAction() != TradeAction.HOLD && engineSignal.getAction() != null) {
-            // Simple prioritization: if both are active, breakout might be preferred.
-            // Or, if engine signal is stronger or different type, could choose it.
-            // For now, breakout takes precedence if it's not HOLD.
-            logger.debug("Both Breakout and Engine signals are active for {}. Prioritizing Breakout: {}", tick.getSymbol(), breakoutSignal.getAction());
+            logger.debug("Breakout signal is passive for {}. Using Engine signal: {}", tick.getSymbol(), engineSignal.getAction());
         }
 
         logger.info("Final signal for {}: {}", tick.getSymbol(), finalSignal.getAction());
 
-        if (finalSignal.getAction() != TradeAction.HOLD && finalSignal.getAction() != null) {
+        if (finalSignal.getAction() != TradeAction.HOLD && finalSignal.getAction() != TradeAction.HALT && finalSignal.getAction() != null) {
             if (currentPosition.isInPosition() && finalSignal.getAction() == currentPosition.getTradeAction()) {
                 logger.debug("Signal {} for {} is same as current position action. No new trade.", finalSignal.getAction(), tick.getSymbol());
             } else if (riskManager.validateTrade(finalSignal, tick)) {
@@ -216,7 +219,7 @@ public class TickProcessor {
                 logger.warn("Final trade validation FAILED for {}. Signal: {}", tick.getSymbol(), finalSignal.getAction());
             }
         } else {
-            logger.debug("Final signal is HOLD for {}. No action taken.", tick.getSymbol());
+            logger.debug("Final signal is {} for {}. No trade action taken.", finalSignal.getAction(), tick.getSymbol());
         }
     }
 
@@ -252,19 +255,23 @@ public class TickProcessor {
 
     private void updatePosition(TradingSignal signal, Tick tick) {
         if (signal.getAction() == TradeAction.BUY) {
-            // TODO: Re-evaluate how volatility is set for TradingPosition.
-            // VolatilityAnalyzer was removed from TickProcessor.
-            // Setting to 0.0 as a placeholder.
-            double volatility = 0.0; // Placeholder
-            logger.warn("Using placeholder volatility {} for new position on {}", volatility, signal.getSymbol());
+            double entryVolatility = 0.0;
+            if (appContext.getVolatilityAnalyzer() != null && tick != null) {
+                entryVolatility = appContext.getVolatilityAnalyzer().getCurrentVolatility(tick);
+                logger.info("Captured entry volatility for {} at {}: {:.4f}",
+                    signal.getSymbol(), signal.getPrice(), entryVolatility);
+            } else {
+                logger.warn("Could not calculate entry volatility for {}: VolatilityAnalyzer or Tick is null. Using 0.0.", signal.getSymbol());
+            }
+
             TradingPosition newPosition = new TradingPosition(
                     signal.getInstrumentToken(),
                     signal.getSymbol(),
                     signal.getPrice(),
                     signal.getQuantity(),
-                    volatility, // Placeholder volatility
+                    entryVolatility, // Use calculated entry volatility
                     true, // Assuming it's a long position
-                    signal.getAction() // Pass the TradeAction from the signal
+                    signal.getAction()
             );
             positions.put(signal.getInstrumentToken(), newPosition);
             logger.info("Position UPDATED for {}: New position: {}", signal.getSymbol(), newPosition);

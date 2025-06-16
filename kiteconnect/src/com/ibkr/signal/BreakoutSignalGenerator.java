@@ -119,6 +119,7 @@ public class BreakoutSignalGenerator {
     private TradingSignal createSignal(Tick tick, TradeAction action) {
         TradingSignal signal = new TradingSignal.Builder()
                 .instrumentToken(tick.getInstrumentToken())
+                .symbol(tick.getSymbol()) // **** ADDED THIS LINE ****
                 .action(action)
                 .price(tick.getLastTradedPrice())
                 .quantity(calculatePositionSize(tick, action))
@@ -161,10 +162,11 @@ public class BreakoutSignalGenerator {
         if (vwapConfirmed && volumeSpike && sectorWeakness) {
             TradingSignal signal = new TradingSignal.Builder()
                     .instrumentToken(tick.getInstrumentToken())
+                    .symbol(tick.getSymbol()) // **** ADDED THIS LINE ****
                     .action(TradeAction.SELL)
                     .price(tick.getLastTradedPrice())
                     .quantity(calculateShortSize(tick))
-                    //.metadata("SHORT_VWAP_VOLUME_SECTOR") // Metadata can be added if needed
+                    //.metadata("SHORT_VWAP_VOLUME_SECTOR")
                     .build();
             logger.info("Generated SHORT signal for {}: {}", tick.getSymbol(), signal);
             return signal;

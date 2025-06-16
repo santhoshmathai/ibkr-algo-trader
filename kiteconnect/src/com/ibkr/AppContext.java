@@ -395,4 +395,8 @@ public class AppContext {
     public SupportResistanceAnalyzer getSupportResistanceAnalyzer() {
         return supportResistanceAnalyzer;
     }
+
+    public VolatilityAnalyzer getVolatilityAnalyzer() {
+        return volatilityAnalyzer;
+    }
 }

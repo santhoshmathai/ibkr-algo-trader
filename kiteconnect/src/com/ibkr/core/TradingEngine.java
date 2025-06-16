@@ -51,7 +51,7 @@ public class TradingEngine {
         // Safeguard checks
         if (circuitBreakerMonitor.isTradingHalted(tick.getSymbol())) {
             logger.warn("Trading halted for symbol: {}. Returning HALT signal.", tick.getSymbol());
-            return TradingSignal.halt();
+            return TradingSignal.halt(tick.getSymbol());
         }
 
         // Generate signals
