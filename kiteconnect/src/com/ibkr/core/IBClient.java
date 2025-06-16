@@ -711,11 +711,6 @@ public class IBClient implements EWrapper {
     }
 
     @Override
-    public void historicalDataEnd(int i, String s, String s1) {
-
-    }
-
-    @Override
     public void mktDepthExchanges(DepthMktDataDescription[] depthMktDataDescriptions) {
 
     }
