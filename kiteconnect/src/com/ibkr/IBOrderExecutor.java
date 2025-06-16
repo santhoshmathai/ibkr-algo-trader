@@ -5,35 +5,62 @@ import com.ibkr.models.Order;  // Our custom Order model
 import com.ibkr.models.TradeAction;
 import com.ibkr.safeguards.CircuitBreakerMonitor;
 import com.ibkr.liquidity.DarkPoolScanner;
+import com.ibkr.data.InstrumentRegistry;
+import org.slf4j.Logger; // Added
+import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList; // Added
 import java.util.HashMap;
+import java.util.List; // Added
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap; // Added
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class IBOrderExecutor {
-    private final EClientSocket client;
+    private static final Logger logger = LoggerFactory.getLogger(IBOrderExecutor.class);
+    private EClientSocket clientSocket;
     private final CircuitBreakerMonitor cbMonitor;
     private final DarkPoolScanner dpScanner;
-    private int nextOrderId = 1;
-    private final Map<String, Integer> symbolToOrderId = new HashMap<>();
+    private final InstrumentRegistry instrumentRegistry;
+    private final AtomicInteger nextOrderId = new AtomicInteger(0);
+    private final Map<String, Integer> symbolToOrderId = new HashMap<>(); // This map might need review for long-running apps
 
-    public IBOrderExecutor(EClientSocket client,
-                           CircuitBreakerMonitor cbMonitor,
-                           DarkPoolScanner dpScanner) {
-        this.client = client;
+    // Internal storage for order states and executions
+    private final Map<Integer, String> orderIdToStatusMap = new ConcurrentHashMap<>();
+    private final Map<Integer, List<Execution>> orderIdToExecutionsMap = new ConcurrentHashMap<>();
+
+
+    public IBOrderExecutor(CircuitBreakerMonitor cbMonitor,
+                           DarkPoolScanner dpScanner,
+                           InstrumentRegistry instrumentRegistry) {
         this.cbMonitor = cbMonitor;
         this.dpScanner = dpScanner;
+        this.instrumentRegistry = instrumentRegistry;
+        // nextOrderId is initialized when TWS calls nextValidId via IBClient
+    }
+
+    public void setClientSocket(EClientSocket clientSocket) {
+        this.clientSocket = clientSocket;
     }
 
     public void placeOrder(Order order) {
+        if (this.nextOrderId.get() == 0) {
+            logger.error("Cannot place order for {}. NextValidId has not been received from TWS yet.", order.getSymbol());
+            // Optionally, throw an exception or return an order rejection status
+            return;
+        }
         Contract contract = createContract(order.getSymbol());
         com.ib.client.Order ibOrder = createIBOrder(order);
 
-        // Generate unique order ID
-        int orderId = nextOrderId++;
-        symbolToOrderId.put(order.getSymbol(), orderId);
+        int orderId = this.nextOrderId.getAndIncrement(); // Use AtomicInteger
+        symbolToOrderId.put(order.getSymbol() + "_" + orderId, orderId); // Make key more unique if needed
 
-        client.placeOrder(orderId, contract, ibOrder);
-        System.out.println("Placed IB order #" + orderId + " for " + order.getSymbol());
+        if (this.clientSocket == null) {
+            logger.error("EClientSocket is not set. Cannot place order for symbol: {}", order.getSymbol());
+            return;
+        }
+        this.clientSocket.placeOrder(orderId, contract, ibOrder);
+        logger.info("Placed IB order #{} for {}", orderId, order.getSymbol());
     }
 
     private Contract createContract(String symbol) {
@@ -86,15 +113,47 @@ public class IBOrderExecutor {
         order.tif("DAY");
     }
 
-    // Callback for order status updates
-    public void onOrderStatus(int orderId, String status, double filled,
-                              double remaining, double avgFillPrice) {
-        System.out.printf("Order %d: %s (Filled: %.0f, Price: %.2f)%n",
-                orderId, status, filled, avgFillPrice);
+    // Method called by IBClient's orderStatus callback
+    public void updateOrderStatus(int orderId, String status, double filled,
+                                  double remaining, double avgFillPrice, double lastFillPrice) {
+        logger.info("Order ID {}: Status={}, Filled={}, Remaining={}, AvgFillPrice={}, LastFillPrice={}",
+                orderId, status, filled, remaining, avgFillPrice, lastFillPrice);
+        orderIdToStatusMap.put(orderId, status);
+        // TODO: Add logic to update portfolio/positions based on fill status
+    }
+
+    // Method called by IBClient's openOrder callback
+    public void handleOpenOrder(int orderId, Contract contract, com.ib.client.Order ibOrder, com.ib.client.OrderState orderState) {
+        logger.info("Received open order details for Order ID {}: Symbol={}, Action={}, Type={}, Status={}",
+                orderId, contract.symbol(), ibOrder.action(), ibOrder.orderType(), orderState.getStatus());
+        orderIdToStatusMap.put(orderId, orderState.getStatus());
+        // TODO: Store more details from ibOrder or contract if needed for internal state reconciliation
+    }
+
+    // Method called by IBClient's openOrderEnd callback
+    public void handleOpenOrderEnd() {
+        logger.debug("IBOrderExecutor: Open order batch processing finished.");
+        // TODO: Any logic to perform after all open orders are received
+    }
+
+    // Method called by IBClient's execDetails callback
+    public void handleExecutionDetails(int reqId, Contract contract, Execution execution) {
+        logger.info("Execution for Order ID {}: Symbol={}, Side={}, Shares={}, Price={}, Time={}, ExecId={}",
+                execution.orderId(), contract.symbol(), execution.side(), execution.shares(), execution.price(), execution.time(), execution.execId());
+
+        orderIdToExecutionsMap.computeIfAbsent(execution.orderId(), k -> new ArrayList<>()).add(execution);
+        // TODO: Update portfolio/positions based on execution details
+    }
+
+    // Method called by IBClient's execDetailsEnd callback
+    public void handleExecutionDetailsEnd(int reqId) {
+        logger.debug("IBOrderExecutor: Execution details batch processing finished for reqId: {}", reqId);
+        // TODO: Any logic to perform after all executions for a request are received
     }
 
     // Callback for next valid order ID
-    public void setNextValidOrderId(int orderId) {
-        this.nextOrderId = orderId;
+    public synchronized void setNextValidOrderId(int orderId) {
+        this.nextOrderId.set(orderId);
+        logger.info("Next valid order ID set to: {}", orderId);
     }
 }

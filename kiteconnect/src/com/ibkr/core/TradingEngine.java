@@ -5,119 +5,182 @@ import com.ibkr.analysis.SectorStrengthAnalyzer;
 import com.ibkr.indicators.*;
 import com.ibkr.safeguards.*;
 import com.ibkr.liquidity.*;
+import com.ibkr.data.InstrumentRegistry; // Added import
 import com.zerodhatech.models.Tick;
 import com.ibkr.models.TradingSignal;
 import com.ibkr.models.TradingPosition;
 import com.ibkr.models.TradeAction;
+import org.slf4j.Logger; // Added
+import org.slf4j.LoggerFactory; // Added
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
 public class TradingEngine {
-    private final VWAPAnalyzer vwap = new VWAPAnalyzer();
-    private final VolumeAnalyzer volume = new VolumeAnalyzer();
-    private final CircuitBreakerMonitor cbMonitor = new CircuitBreakerMonitor();
-    private final DarkPoolScanner dpScanner = new DarkPoolScanner();
-    private final MarketSentimentAnalyzer sentimentAnalyzer = new MarketSentimentAnalyzer(loadTop200Stocks());
-    private final SectorStrengthAnalyzer sectorAnalyzer = new SectorStrengthAnalyzer();
+    private static final Logger logger = LoggerFactory.getLogger(TradingEngine.class); // Added
+
+    private final VWAPAnalyzer vwapAnalyzer;
+    private final VolumeAnalyzer volumeAnalyzer;
+    private final CircuitBreakerMonitor circuitBreakerMonitor;
+    private final DarkPoolScanner darkPoolScanner;
+    private final MarketSentimentAnalyzer marketSentimentAnalyzer;
+    private final SectorStrengthAnalyzer sectorStrengthAnalyzer;
+    private final InstrumentRegistry instrumentRegistry; // Added
+
+    public TradingEngine(VWAPAnalyzer vwapAnalyzer, VolumeAnalyzer volumeAnalyzer,
+                         CircuitBreakerMonitor circuitBreakerMonitor, DarkPoolScanner darkPoolScanner,
+                         MarketSentimentAnalyzer marketSentimentAnalyzer, SectorStrengthAnalyzer sectorStrengthAnalyzer,
+                         InstrumentRegistry instrumentRegistry) {
+        this.vwapAnalyzer = vwapAnalyzer;
+        this.volumeAnalyzer = volumeAnalyzer;
+        this.circuitBreakerMonitor = circuitBreakerMonitor;
+        this.darkPoolScanner = darkPoolScanner;
+        this.marketSentimentAnalyzer = marketSentimentAnalyzer;
+        this.sectorStrengthAnalyzer = sectorStrengthAnalyzer;
+        this.instrumentRegistry = instrumentRegistry; // Added
+    }
 
     public TradingSignal generateSignal(Tick tick, TradingPosition position) {
+        logger.debug("Generating signal for symbol: {}, tick: {}, position: {}", tick.getSymbol(), tick, position);
         // Update all analyzers
         updateAnalyzers(tick);
 
         // Safeguard checks
-        if (cbMonitor.isTradingHalted(tick.getSymbol())) {
+        if (circuitBreakerMonitor.isTradingHalted(tick.getSymbol())) {
+            logger.warn("Trading halted for symbol: {}. Returning HALT signal.", tick.getSymbol());
             return TradingSignal.halt();
         }
 
         // Generate signals
         if (shouldEnterLong(tick, position)) {
-            return buildSignal(tick, TradeAction.BUY, position);
+            TradingSignal signal = buildSignal(tick, TradeAction.BUY, position);
+            logger.info("Generated BUY signal for {}: {}", tick.getSymbol(), signal);
+            return signal;
         } else if (shouldEnterShort(tick, position)) {
-            return buildSignal(tick, TradeAction.SELL, position);
+            TradingSignal signal = buildSignal(tick, TradeAction.SELL, position);
+            logger.info("Generated SELL signal for {}: {}", tick.getSymbol(), signal);
+            return signal;
         } else if (shouldExitPosition(tick, position)) {
-            return buildExitSignal(tick, position);
+            TradingSignal signal = buildExitSignal(tick, position);
+            logger.info("Generated EXIT signal for {}: {}", tick.getSymbol(), signal);
+            return signal;
         }
-
+        logger.debug("No entry or exit conditions met for {}. Returning HOLD signal.", tick.getSymbol());
         return TradingSignal.hold();
     }
 
     private void updateAnalyzers(Tick tick) {
-        vwap.update(tick);
-        volume.update(tick);
-        sectorAnalyzer.updateSectorPerformance(tick.getSymbol(),
+        logger.debug("Updating analyzers for symbol: {}, LTP: {}", tick.getSymbol(), tick.getLastTradedPrice());
+        vwapAnalyzer.update(tick);
+        volumeAnalyzer.update(tick);
+        sectorStrengthAnalyzer.updateSectorPerformance(tick.getSymbol(),
                 (tick.getLastTradedPrice() - tick.getOpenPrice()) / tick.getOpenPrice());
-        cbMonitor.updateStatus(tick.getSymbol(),
+        circuitBreakerMonitor.updateStatus(tick.getSymbol(),
                 Math.abs(tick.getLastTradedPrice() - tick.getOpenPrice()) / tick.getOpenPrice());
-        dpScanner.analyzeTick(tick);
+        darkPoolScanner.analyzeTick(tick);
     }
 
     private boolean shouldEnterLong(Tick tick, TradingPosition position) {
-        return !position.isInPosition() &&
-                vwap.isAboveVWAP(tick) &&
-                volume.isBreakoutWithSpike(tick) &&
-                sectorAnalyzer.isOutperforming(tick, "TECH") &&
-                cbMonitor.allowAggressiveOrders(tick.getSymbol());
+        String currentSymbolSector = sectorStrengthAnalyzer.getSector(tick.getSymbol());
+        boolean sectorCheckPass = false;
+        if (currentSymbolSector == null) {
+            logger.warn("No sector defined for symbol: {}. Sector performance check will be skipped/failed.", tick.getSymbol());
+            // Strategy Decision: if sector is unknown, do we proceed or not? For now, let's say sector check fails.
+            sectorCheckPass = false;
+        } else {
+            sectorCheckPass = sectorStrengthAnalyzer.isOutperforming(tick, currentSymbolSector);
+        }
+
+        boolean enterLong = !position.isInPosition() &&
+                vwapAnalyzer.isAboveVWAP(tick) &&
+                volumeAnalyzer.isBreakoutWithSpike(tick) &&
+                sectorCheckPass &&
+                circuitBreakerMonitor.allowAggressiveOrders(tick.getSymbol());
+        logger.debug("shouldEnterLong for {}: Conditions - InPosition: {}, AboveVWAP: {}, VolumeSpike: {}, SectorCheckPass (Sector: {}): {}, AggressiveOrdersAllowed: {}. Result: {}",
+                tick.getSymbol(), position.isInPosition(), vwapAnalyzer.isAboveVWAP(tick), volumeAnalyzer.isBreakoutWithSpike(tick),
+                currentSymbolSector, sectorCheckPass, circuitBreakerMonitor.allowAggressiveOrders(tick.getSymbol()), enterLong);
+        return enterLong;
     }
 
     private boolean shouldEnterShort(Tick tick, TradingPosition position) {
-        return !position.isInPosition() &&
-                vwap.isBelowVWAP(tick) &&
-                volume.isBreakdownWithSpike(tick) &&
-                sectorAnalyzer.isUnderperforming(tick, "TECH") &&
-                cbMonitor.allowShortSelling(tick.getSymbol()) &&
-                !dpScanner.hasDarkPoolSupport(tick.getSymbol());
+        String currentSymbolSector = sectorStrengthAnalyzer.getSector(tick.getSymbol());
+        boolean sectorCheckPass = false;
+        if (currentSymbolSector == null) {
+            logger.warn("No sector defined for symbol: {}. Sector performance check will be skipped/failed.", tick.getSymbol());
+            sectorCheckPass = false;
+        } else {
+            sectorCheckPass = sectorStrengthAnalyzer.isUnderperforming(tick, currentSymbolSector);
+        }
+
+        boolean enterShort = !position.isInPosition() &&
+                vwapAnalyzer.isBelowVWAP(tick) &&
+                volumeAnalyzer.isBreakdownWithSpike(tick) &&
+                sectorCheckPass &&
+                circuitBreakerMonitor.allowShortSelling(tick.getSymbol()) &&
+                !darkPoolScanner.hasDarkPoolSupport(tick.getSymbol());
+        logger.debug("shouldEnterShort for {}: Conditions - InPosition: {}, BelowVWAP: {}, VolumeSpike: {}, SectorCheckPass (Sector: {}): {}, ShortSellingAllowed: {}, NoDarkPool: {}. Result: {}",
+                tick.getSymbol(), position.isInPosition(), vwapAnalyzer.isBelowVWAP(tick), volumeAnalyzer.isBreakdownWithSpike(tick),
+                currentSymbolSector, sectorCheckPass, circuitBreakerMonitor.allowShortSelling(tick.getSymbol()),
+                !darkPoolScanner.hasDarkPoolSupport(tick.getSymbol()), enterShort);
+        return enterShort;
     }
 
     private boolean shouldExitPosition(Tick tick, TradingPosition position) {
         if (!position.isInPosition()) {
             return false;
         }
-
-        // Take profit or stop loss check
         double currentReturn = (tick.getLastTradedPrice() - position.getEntryPrice()) / position.getEntryPrice();
-        double volatility = vwap.getVolatility();
-
+        double volatility = vwapAnalyzer.getVolatility();
+        boolean exit = false;
         if (position.isLong()) {
-            return currentReturn >= (1.5 * volatility) ||  // Take profit
-                    currentReturn <= (-0.8 * volatility);   // Stop loss
-        } else {
-            return currentReturn <= (-1.2 * volatility) || // Take profit (short)
-                    currentReturn >= (0.6 * volatility);    // Stop loss (short)
+            exit = currentReturn >= (1.5 * volatility) || currentReturn <= (-0.8 * volatility);
+        } else { // Short position
+            exit = currentReturn <= (-1.2 * volatility) || currentReturn >= (0.6 * volatility);
         }
+        logger.debug("shouldExitPosition for {}: InPosition: {}, IsLong: {}, CurrentReturn: {:.4f}, Volatility: {:.4f}. Result: {}",
+                tick.getSymbol(), position.isInPosition(), position.isLong(), currentReturn, volatility, exit);
+        return exit;
     }
 
     private TradingSignal buildSignal(Tick tick, TradeAction action, TradingPosition position) {
-        return new TradingSignal.Builder()
+        TradingSignal signal = new TradingSignal.Builder()
                 .symbol(tick.getSymbol())
                 .action(action)
                 .price(tick.getLastTradedPrice())
                 .quantity(calculateSize(tick, action))
-                .darkPoolAllowed(dpScanner.hasDarkPoolSupport(tick.getSymbol()))
+                .darkPoolAllowed(darkPoolScanner.hasDarkPoolSupport(tick.getSymbol()))
                 .strategyId("VWAP_VOL_SECTOR")
                 .build();
+        logger.debug("Built signal for {}: {}", tick.getSymbol(), signal);
+        return signal;
     }
 
     private TradingSignal buildExitSignal(Tick tick, TradingPosition position) {
         TradeAction action = position.isLong() ? TradeAction.SELL : TradeAction.BUY;
-        return new TradingSignal.Builder()
+        TradingSignal signal = new TradingSignal.Builder()
                 .symbol(position.getSymbol())
                 .action(action)
                 .price(tick.getLastTradedPrice())
                 .quantity(position.getQuantity())
                 .strategyId("EXIT_" + position.getInstrumentToken())
                 .build();
+        logger.debug("Built exit signal for {}: {}", position.getSymbol(), signal);
+        return signal;
     }
 
     private int calculateSize(Tick tick, TradeAction action) {
         double baseSize = 1000; // Shares
-        double volatilityAdjustment = 1 / Math.max(0.01, vwap.getVolatility()); // Prevent division by zero
-        double liquidityAdjustment = dpScanner.getLiquidityScore(tick.getSymbol());
-        double circuitBreakerAdjustment = cbMonitor.getSizeMultiplier(tick.getSymbol());
+        double vwapVolatility = vwapAnalyzer.getVolatility();
+        double volatilityAdjustment = 1 / Math.max(0.01, vwapVolatility); // Prevent division by zero
+        double liquidityScore = darkPoolScanner.getLiquidityScore(tick.getSymbol());
+        double cbSizeMultiplier = circuitBreakerMonitor.getSizeMultiplier(tick.getSymbol());
         double shortingReduction = action == TradeAction.SELL ? 0.8 : 1.0; // Reduce short positions
 
-        return (int) (baseSize * volatilityAdjustment * liquidityAdjustment * circuitBreakerAdjustment * shortingReduction);
+        int calculatedQuantity = (int) (baseSize * volatilityAdjustment * liquidityScore * cbSizeMultiplier * shortingReduction);
+        logger.trace("calculateSize for {}: Action: {}, BaseSize: {}, Volatility: {:.4f}, VolAdj: {:.2f}, LiqScore: {:.2f}, CB Multiplier: {:.2f}, ShortReduction: {:.2f}. Calculated Quantity: {}",
+                tick.getSymbol(), action, baseSize, vwapVolatility, volatilityAdjustment, liquidityScore, cbSizeMultiplier, shortingReduction, calculatedQuantity);
+        return calculatedQuantity;
     }
 
     // Additional helper methods
@@ -127,75 +190,90 @@ public class TradingEngine {
     }
 
     private boolean isHighVolatility(Tick tick) {
-        return vwap.getVolatility() > (tick.getLastTradedPrice() * 0.05); // 5% threshold
+        return vwapAnalyzer.getVolatility() > (tick.getLastTradedPrice() * 0.05); // 5% threshold
     }
 
     public List<TradingSignal> generateOpeningSignals(Tick tick) {
         List<TradingSignal> signals = new ArrayList<>();
+        logger.debug("Attempting to generate opening signals for tick: {}", tick.getSymbol());
 
-        if (!sentimentAnalyzer.isInAnalysisWindow()) {
+        if (!marketSentimentAnalyzer.isInAnalysisWindow()) {
+            logger.debug("Market sentiment analyzer not in analysis window. No opening signals generated.");
             return signals;
         }
 
-        MarketSentimentAnalyzer.MarketSentiment sentiment = sentimentAnalyzer.getMarketSentiment();
+        MarketSentimentAnalyzer.MarketSentiment sentiment = marketSentimentAnalyzer.getMarketSentiment();
+        logger.info("Current market sentiment for opening signals: {}", sentiment);
 
         switch (sentiment) {
             case STRONG_UP:
                 signals.addAll(generateBullishSignals(tick));
+                logger.info("Generated {} bullish opening signals.", signals.size());
                 break;
             case STRONG_DOWN:
-                signals.addAll(generateBearishSignals(tick));
+                List<TradingSignal> bearishSignals = generateBearishSignals(tick);
+                signals.addAll(bearishSignals);
+                logger.info("Generated {} bearish opening signals.", bearishSignals.size());
+                break;
+            default:
+                logger.info("Neutral market sentiment. No opening signals generated based on sentiment.");
                 break;
         }
-
         return signals;
     }
 
     private List<TradingSignal> generateBullishSignals(Tick tick) {
         List<TradingSignal> signals = new ArrayList<>();
-
-        // Buy top 5 performing stocks in strongest sectors
-        List<String> topSectors = sectorAnalyzer.getTopSectors(3);
-        List<String> topStocks = sentimentAnalyzer.getTopPerformers(20, true);
+        logger.debug("Generating bullish signals based on top sectors and performers.");
+        List<String> topSectors = sectorStrengthAnalyzer.getTopSectors(3);
+        List<String> topStocks = marketSentimentAnalyzer.getTopPerformers(20, true);
+        logger.debug("Top sectors: {}. Top performing stocks: {}", topSectors, topStocks);
 
         topStocks.stream()
-                .filter(symbol -> topSectors.contains(sectorAnalyzer.getSector(symbol)))
+                .filter(symbol -> {
+                    String sector = sectorStrengthAnalyzer.getSector(symbol);
+                    boolean inTopSector = sector != null && topSectors.contains(sector);
+                    logger.trace("Bullish filter: Symbol {}, Sector {}, InTopSector: {}", symbol, sector, inTopSector);
+                    return inTopSector;
+                })
                 .limit(5)
                 .forEach(symbol -> {
-                    signals.add(new TradingSignal.Builder()
+                    TradingSignal signal = new TradingSignal.Builder()
                             .symbol(symbol)
                             .action(TradeAction.BUY)
-                            .quantity(calculateSize(tick, TradeAction.BUY))
-                            .build());
+                            .quantity(calculateSize(tick, TradeAction.BUY)) // tick here is a generic market tick, might not be ideal for specific symbol sizing
+                            .build();
+                    signals.add(signal);
+                    logger.debug("Generated bullish signal: {}", signal);
                 });
-
         return signals;
     }
 
     private List<TradingSignal> generateBearishSignals(Tick tick) {
         List<TradingSignal> signals = new ArrayList<>();
-
-        // Short bottom 5 performing stocks in weakest sectors
-        List<String> weakSectors = sectorAnalyzer.getBottomSectors(3);
-        List<String> bottomStocks = sentimentAnalyzer.getTopPerformers(20, false);
+        logger.debug("Generating bearish signals based on weakest sectors and performers.");
+        List<String> weakSectors = sectorStrengthAnalyzer.getBottomSectors(3);
+        List<String> bottomStocks = marketSentimentAnalyzer.getTopPerformers(20, false);
+        logger.debug("Weak sectors: {}. Bottom performing stocks: {}", weakSectors, bottomStocks);
 
         bottomStocks.stream()
-                .filter(symbol -> weakSectors.contains(sectorAnalyzer.getSector(symbol)))
+                .filter(symbol -> {
+                    String sector = sectorStrengthAnalyzer.getSector(symbol);
+                    boolean inWeakSector = sector != null && weakSectors.contains(sector);
+                    logger.trace("Bearish filter: Symbol {}, Sector {}, InWeakSector: {}", symbol, sector, inWeakSector);
+                    return inWeakSector;
+                })
                 .limit(5)
                 .forEach(symbol -> {
-                    signals.add(new TradingSignal.Builder()
+                    TradingSignal signal = new TradingSignal.Builder()
                             .symbol(symbol)
                             .action(TradeAction.SELL)
-                            .quantity(calculateSize(tick, TradeAction.SELL))
-                            .build());
+                            .quantity(calculateSize(tick, TradeAction.SELL)) // tick here is a generic market tick
+                            .build();
+                    signals.add(signal);
+                    logger.debug("Generated bearish signal: {}", signal);
                 });
-
         return signals;
-
     }
 
-    private Set<String> loadTop200Stocks() {
-        // Load from config/database
-        return Set.of("AAPL", "MSFT", "GOOGL"); // Top 200 symbols
-    }
 }

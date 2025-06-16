@@ -1,57 +1,54 @@
 package com.ibkr.core;
 
-import com.ib.client.*;
-
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import com.ib.client.EClientSocket;
+// EReaderSignal, ExecutorService, Executors, EWrapper are no longer needed here directly
+import org.slf4j.Logger; // Added
+import org.slf4j.LoggerFactory; // Added
 
 public class IBConnectionManager {
+    private static final Logger logger = LoggerFactory.getLogger(IBConnectionManager.class); // Added
     private final EClientSocket clientSocket;
-    private final EReaderSignal signal;
-    private final ExecutorService executor;
-    private boolean connected = false;
+    // private final EReaderSignal signal; // Removed
+    // private final ExecutorService executor; // Removed
+    private boolean connected = false; // This status might still be useful locally or could be derived from clientSocket.isConnected()
 
-    public IBConnectionManager(EWrapper wrapper) {
-        this.signal = new EJavaSignal();
-        this.clientSocket = new EClientSocket(wrapper, signal);
-        this.executor = Executors.newSingleThreadExecutor();
+    public IBConnectionManager(EClientSocket clientSocket) { // Modified constructor
+        this.clientSocket = clientSocket;
     }
 
     public synchronized void connect(String host, int port, int clientId) {
-        if (!connected) {
+        if (!clientSocket.isConnected()) { // Check actual socket status
+            logger.info("Connecting to {}:{} with clientId: {}", host, port, clientId);
             clientSocket.eConnect(host, port, clientId);
-            if (clientSocket.isConnected()) {
-                connected = true;
-                startMessageProcessing();
+            // Connection status will be updated via EWrapper callbacks (connectAck, error)
+            // No need to manage 'connected' state here explicitly if IBClient handles it via EWrapper
+            // For simplicity, we can assume eConnect is synchronous enough for this check, or rely on EWrapper.
+            if (clientSocket.isConnected()) { // Re-check after attempting connect
+                 logger.info("Successfully connected (according to isConnected()). Awaiting connectAck.");
+                 this.connected = true; // Local status
+            } else {
+                 logger.warn("Connection attempt made, but isConnected() is false. Check TWS logs and ensure EWrapper.connectAck is received.");
             }
+        } else {
+            logger.info("Already connected or connection attempt in progress.");
         }
     }
 
-    private void startMessageProcessing() {
-        final EReader reader = new EReader(clientSocket, signal);
-        reader.start();
-
-        executor.execute(() -> {
-            while (connected) {
-                signal.waitForSignal();
-                try {
-                    reader.processMsgs();
-                } catch (Exception e) {
-                    System.err.println("Error processing messages: " + e.getMessage() + e.getClass());
-                }
-            }
-        });
-    }
+    // Removed startMessageProcessing() as it's handled by IBClient
 
     public synchronized void disconnect() {
-        if (connected) {
+        if (clientSocket.isConnected()) {
+            logger.info("Disconnecting...");
             clientSocket.eDisconnect();
-            connected = false;
-            executor.shutdown();
+            // Connection status will be updated via EWrapper.connectionClosed()
+            this.connected = false; // Local status
+            logger.info("Disconnected.");
+        } else {
+            logger.info("Already disconnected.");
         }
     }
 
-    public EClientSocket getClientSocket() {
+    public EClientSocket getClientSocket() { // This might not be needed if IBClient manages its own socket
         return clientSocket;
     }
 

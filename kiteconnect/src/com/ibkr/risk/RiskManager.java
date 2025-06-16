@@ -10,10 +10,6 @@ public class RiskManager {
         this.liquidityMonitor = liquidityMonitor;
         this.volatilityAnalyzer = volatilityAnalyzer;
     }
-    public RiskManager() {
-        this.liquidityMonitor = new LiquidityMonitor();
-        this.volatilityAnalyzer = new VolatilityAnalyzer();
-    }
 
     private final LiquidityMonitor liquidityMonitor;
     private final VolatilityAnalyzer volatilityAnalyzer;

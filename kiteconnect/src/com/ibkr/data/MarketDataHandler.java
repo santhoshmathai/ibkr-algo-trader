@@ -12,37 +12,46 @@ import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
+import com.zerodhatech.models.Tick; // Ensure this is imported for the public method
+import com.zerodhatech.models.OHLC;  // For CSV formatting
+import com.zerodhatech.models.Depth; // For CSV formatting
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.text.SimpleDateFormat; // For CSV timestamp formatting
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList; // For depth formatting
+import java.util.Date; // For CSV timestamp formatting
+import java.util.Map;
+import java.util.TimeZone; // For CSV timestamp formatting
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+// Removed Contract, TickAttrib, Collections, Optional, AtomicLong, Collectors, ConcurrentSkipListMap, CopyOnWriteArrayList
+// Removed specific in-memory storage and related methods.
 
 public class MarketDataHandler  {
     private static final Logger logger = LoggerFactory.getLogger(MarketDataHandler.class);
-    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
-
-    // Configuration
-    private static final int MAX_MEMORY_TICKS = 10000; // Keep last 10,000 ticks in memory per symbol
+    private static final DateTimeFormatter DATE_FILENAME_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final boolean PERSIST_TO_DISK = true;
     private static final String DATA_DIRECTORY = "market_data";
 
-    // In-memory storage
-    private final Map<String, TickDataSeries> tickData = new ConcurrentHashMap<>();
-    private final Map<String, Contract> symbolToContract = new ConcurrentHashMap<>();
-    ///private final OrderManager orderManager;
-
-    // Disk persistence
     private final ExecutorService persistenceExecutor = Executors.newSingleThreadExecutor();
     private final Map<String, BufferedWriter> symbolWriters = new ConcurrentHashMap<>();
-
-  /*  public MarketDataHandler(OrderManager orderManager) {
-        //this.orderManager = orderManager;
-        initializeDataDirectory();
-    }*/
-
+    private final SimpleDateFormat csvTimestampFormat;
 
     public MarketDataHandler() {
-        //this.orderManager = orderManager;
         initializeDataDirectory();
+        csvTimestampFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
+        csvTimestampFormat.setTimeZone(TimeZone.getTimeZone("IST")); // Or your desired timezone
     }
 
     private void initializeDataDirectory() {
@@ -51,258 +60,163 @@ public class MarketDataHandler  {
                 Path path = Paths.get(DATA_DIRECTORY);
                 if (!Files.exists(path)) {
                     Files.createDirectories(path);
+                    logger.info("Created data directory: {}", path.toAbsolutePath());
+                } else {
+                    logger.info("Data directory already exists: {}", path.toAbsolutePath());
                 }
             } catch (IOException e) {
-                logger.error("Failed to create data directory", e);
+                logger.error("Failed to create/access data directory: {}", DATA_DIRECTORY, e);
             }
         }
     }
 
-    //@Override
-    public void onTickPrice(Contract contract, int field, double price, TickAttrib attribs) {
-        String symbol = contract.symbol();
-        long timestamp = System.currentTimeMillis();
-
-        // Store contract reference if new
-        symbolToContract.putIfAbsent(symbol, contract);
-
-        // Create tick record
-        Tick tick = new Tick(timestamp, field, price, 0, attribs);
-
-        // Store in memory
-        storeTickInMemory(symbol, tick);
-
-        // Persist to disk if enabled
-        if (PERSIST_TO_DISK) {
-            persistTickAsync(symbol, tick);
+    public void persistTick(com.zerodhatech.models.Tick zerodhaTick) {
+        if (!PERSIST_TO_DISK || zerodhaTick == null || zerodhaTick.getSymbol() == null) {
+            if (zerodhaTick != null && zerodhaTick.getSymbol() == null) {
+                logger.warn("Cannot persist tick due to null symbol. Tick: {}", zerodhaTick);
+            }
+            return;
         }
-
-        // Process tick
-        processTick(contract, tick);
+        persistTickAsync(zerodhaTick.getSymbol(), zerodhaTick);
     }
 
-   // @Override
-    public void onTickSize(Contract contract, int field, int size) {
-        String symbol = contract.symbol();
-        long timestamp = System.currentTimeMillis();
-
-        // Store contract reference if new
-        symbolToContract.putIfAbsent(symbol, contract);
-
-        // Create tick record
-        Tick tick = new Tick(timestamp, field, 0, size, null);
-
-        // Store in memory
-        storeTickInMemory(symbol, tick);
-
-        // Persist to disk if enabled
-        if (PERSIST_TO_DISK) {
-            persistTickAsync(symbol, tick);
-        }
-
-        // Process tick
-        processTick(contract, tick);
-    }
-
-    private void storeTickInMemory(String symbol, Tick tick) {
-        tickData.computeIfAbsent(symbol, k -> new TickDataSeries())
-                .addTick(tick);
-    }
-
-    private void persistTickAsync(String symbol, Tick tick) {
+    private void persistTickAsync(String symbol, com.zerodhatech.models.Tick tick) {
         persistenceExecutor.execute(() -> {
             try {
                 BufferedWriter writer = symbolWriters.computeIfAbsent(symbol, this::createWriterForSymbol);
-                writer.write(tick.toCsvString());
-                writer.newLine();
+                if (writer != null) {
+                    writer.write(toCsvString(tick));
+                    writer.newLine();
+                }
             } catch (IOException e) {
-                logger.error("Failed to persist tick for {}", symbol, e);
+                logger.error("Failed to persist tick for symbol {}", symbol, e);
             }
         });
     }
 
     private BufferedWriter createWriterForSymbol(String symbol) {
+        if (symbol == null || symbol.isEmpty()) {
+            logger.error("Symbol is null or empty, cannot create writer.");
+            return null;
+        }
         try {
-            String dateStr = LocalDate.now().format(DATE_FORMAT);
-            String filename = String.format("%s/%s_%s.csv", DATA_DIRECTORY, symbol, dateStr);
-            return new BufferedWriter(new FileWriter(filename, true));
+            String dateStr = LocalDate.now().format(DATE_FILENAME_FORMAT);
+            // Sanitize symbol name for filename (e.g., replace slashes if any)
+            String sanitizedSymbol = symbol.replace("/", "_").replace("\\", "_");
+            String filename = String.format("%s/%s_%s.csv", DATA_DIRECTORY, sanitizedSymbol, dateStr);
+
+            Path filePath = Paths.get(filename);
+            boolean fileExists = Files.exists(filePath);
+
+            BufferedWriter writer = new BufferedWriter(new FileWriter(filename, true)); // Append mode
+            if (!fileExists) {
+                logger.info("New CSV file created: {}. Writing header.", filename);
+                writer.write(getCsvHeader());
+                writer.newLine();
+            }
+            return writer;
         } catch (IOException e) {
-            logger.error("Failed to create writer for {}", symbol, e);
+            logger.error("Failed to create writer for symbol {}", symbol, e);
             return null;
         }
     }
 
-    private void processTick(Contract contract, Tick tick) {
-        // Implement your tick processing logic here
-    /*    switch (tick.getField()) {
-            case TickType.LAST:
-                logger.debug("Last price for {}: {}", contract.symbol(), tick.getPrice());
-                break;
-            case TickType.BID:
-                logger.debug("Bid price for {}: {}", contract.symbol(), tick.getPrice());
-                break;
-            case TickType.ASK:
-                logger.debug("Ask price for {}: {}", contract.symbol(), tick.getPrice());
-                break;
-            case TickType.VOLUME:
-                logger.debug("Volume for {}: {}", contract.symbol(), tick.getSize());
-                break;
-        }*/
+    private String getCsvHeader() {
+        // Simplified header for now
+        return "instrumentToken,symbol,tickTimestamp,lastTradedTime,lastPrice,lastTradedQuantity,averagePrice,volumeTradedToday,openPrice,highPrice,lowPrice,closePrice,mode,ohlc_open,ohlc_high,ohlc_low,ohlc_close,depth_buy_csv,depth_sell_csv";
     }
 
-    // Data retrieval methods
-    public List<Tick> getTicks(String symbol, long startTime, long endTime) {
-        TickDataSeries series = tickData.get(symbol);
-        if (series != null) {
-            return series.getTicks(startTime, endTime);
-        }
-        return Collections.emptyList();
+    private String formatDateForCsv(Date date) {
+        if (date == null) return "";
+        return csvTimestampFormat.format(date);
     }
 
-    public Optional<Tick> getLastTick(String symbol) {
-        TickDataSeries series = tickData.get(symbol);
-        if (series != null) {
-            return series.getLastTick();
+    private String escapeCsv(String data) {
+        if (data == null) return "";
+        if (data.contains(",") || data.contains("\"") || data.contains("\n")) {
+            return "\"" + data.replace("\"", "\"\"") + "\"";
         }
-        return Optional.empty();
+        return data;
     }
 
-    public Map<Integer, List<Tick>> getTicksByType(String symbol, long startTime, long endTime) {
-        TickDataSeries series = tickData.get(symbol);
-        if (series != null) {
-            return series.getTicksByType(startTime, endTime);
+    private String toCsvString(com.zerodhatech.models.Tick tick) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(tick.getInstrumentToken()).append(",");
+        sb.append(escapeCsv(tick.getSymbol())).append(",");
+        sb.append(formatDateForCsv(tick.getTickTimestamp())).append(",");
+        sb.append(formatDateForCsv(tick.getLastTradedTime())).append(",");
+        sb.append(tick.getLastTradedPrice()).append(",");
+        sb.append(tick.getLastTradedQuantity()).append(",");
+        sb.append(tick.getAveragePrice()).append(",");
+        sb.append(tick.getVolumeTradedToday()).append(",");
+        // totalBuyQuantity and totalSellQuantity from Tick are often not directly from IB L1.
+        // Using bestBidQuantity and bestAskQuantity as placeholders or if they are more relevant.
+        // For true total day quantities, another source or aggregation might be needed.
+        // sb.append(tick.getTotalBuyQuantity()).append(",");
+        // sb.append(tick.getTotalSellQuantity()).append(",");
+        sb.append(tick.getOpenPrice()).append(",");
+        sb.append(tick.getHighPrice()).append(",");
+        sb.append(tick.getLowPrice()).append(",");
+        sb.append(tick.getClosePrice()).append(",");
+        sb.append(escapeCsv(tick.getMode())).append(",");
+
+        OHLC ohlc = tick.getOhlc();
+        if (ohlc != null) {
+            sb.append(ohlc.getOpen()).append(",");
+            sb.append(ohlc.getHigh()).append(",");
+            sb.append(ohlc.getLow()).append(",");
+            sb.append(ohlc.getClose()); // Last OHLC field, no comma after
+        } else {
+            sb.append(",,,"); // Empty fields for OHLC
         }
-        return Collections.emptyMap();
+        sb.append(",");
+
+
+        Map<String, ArrayList<Depth>> depthMap = tick.getMarketDepth();
+        if (depthMap != null) {
+            ArrayList<Depth> buyDepth = depthMap.getOrDefault("buy", new ArrayList<>());
+            ArrayList<Depth> sellDepth = depthMap.getOrDefault("sell", new ArrayList<>());
+
+            // Simplified depth: "price1@qty1;price2@qty2|price1@qty1;price2@qty2"
+            String buyDepthStr = buyDepth.stream()
+                                    .map(d -> String.format("%.2f@%d", d.getPrice(), d.getQuantity()))
+                                    .collect(Collectors.joining(";"));
+            sb.append(escapeCsv(buyDepthStr)).append(",");
+
+            String sellDepthStr = sellDepth.stream()
+                                     .map(d -> String.format("%.2f@%d", d.getPrice(), d.getQuantity()))
+                                     .collect(Collectors.joining(";"));
+            sb.append(escapeCsv(sellDepthStr));
+        } else {
+            sb.append(","); // buy_depth_csv
+            sb.append("");  // sell_depth_csv
+        }
+        return sb.toString();
     }
 
     public void shutdown() {
+        logger.info("Shutting down MarketDataHandler persistence executor...");
         persistenceExecutor.shutdown();
         try {
-            if (!persistenceExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+            if (!persistenceExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
+                logger.warn("Persistence executor did not terminate in 10 seconds. Forcing shutdown.");
                 persistenceExecutor.shutdownNow();
             }
-
-            // Close all writers
-            for (BufferedWriter writer : symbolWriters.values()) {
-                try {
-                    writer.close();
-                } catch (IOException e) {
-                    logger.error("Error closing writer", e);
-                }
-            }
         } catch (InterruptedException e) {
+            logger.error("Interrupted while waiting for persistence executor to shutdown.");
+            persistenceExecutor.shutdownNow();
             Thread.currentThread().interrupt();
         }
-    }
 
-    // Data structures
-    private static class Tick {
-        private final long timestamp;
-        private final int field;
-        private final double price;
-        private final int size;
-        private final TickAttrib attribs;
-
-        public Tick(long timestamp, int field, double price, int size, TickAttrib attribs) {
-            this.timestamp = timestamp;
-            this.field = field;
-            this.price = price;
-            this.size = size;
-            this.attribs = attribs;
-        }
-
-        public String toCsvString() {
-            return String.join(",",
-                    String.valueOf(timestamp),
-                    String.valueOf(field),
-                    String.valueOf(price),
-                    String.valueOf(size),
-                    attribs != null ? attribs.toString() : ""
-            );
-        }
-
-        // Getters
-        public long getTimestamp() { return timestamp; }
-        public int getField() { return field; }
-        public double getPrice() { return price; }
-        public int getSize() { return size; }
-        public TickAttrib getAttribs() { return attribs; }
-    }
-
-    private static class TickDataSeries {
-        private final ConcurrentSkipListMap<Long, Tick> ticksByTime = new ConcurrentSkipListMap<>();
-        private final Map<Integer, List<Tick>> ticksByType = new ConcurrentHashMap<>();
-        private final AtomicLong count = new AtomicLong();
-
-        public void addTick(Tick tick) {
-            // Clean old ticks if we're over limit
-            if (count.incrementAndGet() > MAX_MEMORY_TICKS) {
-                Map.Entry<Long, Tick> first = ticksByTime.firstEntry();
-                if (first != null) {
-                    ticksByTime.remove(first.getKey());
-                    count.decrementAndGet();
-                }
+        logger.info("Closing {} symbol writers.", symbolWriters.size());
+        for (Map.Entry<String, BufferedWriter> entry : symbolWriters.entrySet()) {
+            try {
+                entry.getValue().close();
+            } catch (IOException e) {
+                logger.error("Error closing writer for symbol {}", entry.getKey(), e);
             }
-
-            ticksByTime.put(tick.getTimestamp(), tick);
-            ticksByType.computeIfAbsent(tick.getField(), k -> new CopyOnWriteArrayList<>())
-                    .add(tick);
         }
-
-        public List<Tick> getTicks(long startTime, long endTime) {
-            return new ArrayList<>(ticksByTime.subMap(startTime, endTime).values());
-        }
-
-        public Optional<Tick> getLastTick() {
-            Map.Entry<Long, Tick> last = ticksByTime.lastEntry();
-            return last != null ? Optional.of(last.getValue()) : Optional.empty();
-        }
-
-        public Map<Integer, List<Tick>> getTicksByType(long startTime, long endTime) {
-            Map<Integer, List<Tick>> result = new HashMap<>();
-            for (Map.Entry<Integer, List<Tick>> entry : ticksByType.entrySet()) {
-                List<Tick> filtered = entry.getValue().stream()
-                        .filter(t -> t.getTimestamp() >= startTime && t.getTimestamp() <= endTime)
-                        .collect(Collectors.toList());
-                if (!filtered.isEmpty()) {
-                    result.put(entry.getKey(), filtered);
-                }
-            }
-            return result;
-        }
-    }
-
-    // Utility methods for loading historical data
-    public List<Tick> loadHistoricalTicks(String symbol, LocalDate date) throws IOException {
-        String filename = String.format("%s/%s_%s.csv", DATA_DIRECTORY, symbol, date.format(DATE_FORMAT));
-        Path path = Paths.get(filename);
-
-        if (!Files.exists(path)) {
-            return Collections.emptyList();
-        }
-
-        try (BufferedReader reader = Files.newBufferedReader(path)) {
-            return reader.lines()
-                    .map(this::parseTickFromCsv)
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toList());
-        }
-    }
-
-    private Tick parseTickFromCsv(String line) {
-        try {
-            String[] parts = line.split(",");
-            long timestamp = Long.parseLong(parts[0]);
-            int field = Integer.parseInt(parts[1]);
-            double price = Double.parseDouble(parts[2]);
-            int size = Integer.parseInt(parts[3]);
-            TickAttrib attribs = parts.length > 4 && !parts[4].isEmpty() ?
-                    new TickAttrib() : null; // Simplified - would need proper TickAttrib parsing
-
-            return new Tick(timestamp, field, price, size, attribs);
-        } catch (Exception e) {
-            logger.error("Failed to parse tick from CSV: {}", line, e);
-            return null;
-        }
+        symbolWriters.clear();
+        logger.info("MarketDataHandler shutdown complete.");
     }
 }
