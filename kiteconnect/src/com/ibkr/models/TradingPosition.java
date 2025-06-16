@@ -55,4 +55,20 @@ public class TradingPosition {
     public TradeAction getTradeAction() {
         return tradeAction;
     }
+
+    public double getStopLossPrice(double stopLossPercentage) {
+        if (!isInPosition()) {
+            throw new IllegalStateException("Cannot calculate stop-loss for a non-active position. Symbol: " + getSymbol());
+        }
+        if (stopLossPercentage <= 0 || stopLossPercentage >= 1) {
+            throw new IllegalArgumentException("Stop-loss percentage must be between 0 and 1 (exclusive). Value: " + stopLossPercentage);
+        }
+
+        if (isLong()) {
+            return getEntryPrice() * (1.0 - stopLossPercentage);
+        } else {
+            // For short positions
+            return getEntryPrice() * (1.0 + stopLossPercentage);
+        }
+    }
 }
