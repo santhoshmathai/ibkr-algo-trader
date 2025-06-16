@@ -8,11 +8,53 @@ import com.google.gson.annotations.SerializedName;
 public class OHLC {
 
     @SerializedName("high")
-    public double high;
+    private double high;
     @SerializedName("low")
-    public double low;
+    private double low;
     @SerializedName("close")
-    public double close;
+    private double close;
     @SerializedName("open")
-    public double open;
+    private double open;
+
+    public OHLC() {
+    }
+
+    public OHLC(OHLC other) {
+        this.open = other.getOpen();
+        this.high = other.getHigh();
+        this.low = other.getLow();
+        this.close = other.getClose();
+    }
+
+    public double getHigh() {
+        return high;
+    }
+
+    public void setHigh(double high) {
+        this.high = high;
+    }
+
+    public double getLow() {
+        return low;
+    }
+
+    public void setLow(double low) {
+        this.low = low;
+    }
+
+    public double getClose() {
+        return close;
+    }
+
+    public void setClose(double close) {
+        this.close = close;
+    }
+
+    public double getOpen() {
+        return open;
+    }
+
+    public void setOpen(double open) {
+        this.open = open;
+    }
 }
