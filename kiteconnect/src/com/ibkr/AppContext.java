@@ -5,6 +5,7 @@ import com.ib.client.EJavaSignal;
 import com.ib.client.EReaderSignal;
 import com.ibkr.analysis.MarketSentimentAnalyzer;
 import com.ibkr.analysis.SectorStrengthAnalyzer;
+import com.ibkr.analysis.SupportResistanceAnalyzer; // Added import
 import com.ibkr.core.IBClient;
 import com.ibkr.core.IBConnectionManager;
 import com.ibkr.core.TradingEngine;
@@ -56,6 +57,7 @@ public class AppContext {
     // Analyzers
     private final MarketSentimentAnalyzer marketSentimentAnalyzer;
     private final SectorStrengthAnalyzer sectorStrengthAnalyzer;
+    private final SupportResistanceAnalyzer supportResistanceAnalyzer; // Added field
     private final VWAPAnalyzer vwapAnalyzer;
     private final VolumeAnalyzer volumeAnalyzer;
     private final VolatilityAnalyzer volatilityAnalyzer;
@@ -139,6 +141,7 @@ public class AppContext {
             this.openingObservationMinutes,
             actualMarketOpenTime
         );
+        this.supportResistanceAnalyzer = new SupportResistanceAnalyzer(this); // Added instantiation
         // Ensure SectorStrengthAnalyzer gets valid, though possibly empty, maps
         this.sectorStrengthAnalyzer = new SectorStrengthAnalyzer(
             sectorToStocksMap != null ? sectorToStocksMap : new HashMap<>(),
@@ -388,5 +391,9 @@ public class AppContext {
     // Add other getters as necessary
     public MarketSentimentAnalyzer getMarketSentimentAnalyzer() {
         return marketSentimentAnalyzer;
+    }
+
+    public SupportResistanceAnalyzer getSupportResistanceAnalyzer() {
+        return supportResistanceAnalyzer;
     }
 }
