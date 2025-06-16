@@ -41,7 +41,7 @@ public class TickProcessor {
     public void process(Tick tick) {
         logger.debug("Processing tick for {}: LTP = {}", tick.getSymbol(), tick.getLastTradedPrice());
         TradingPosition currentPosition = positions.getOrDefault(tick.getInstrumentToken(),
-                new TradingPosition(tick.getInstrumentToken(), tick.getSymbol(), 0, 0, 0.0, true));
+                new TradingPosition(tick.getInstrumentToken(), tick.getSymbol(), 0, 0, 0.0, true, null));
         logger.debug("Current position for {}: {}", tick.getSymbol(), currentPosition);
 
         boolean openingWindow = appContext.isMarketInOpeningWindow(); // Changed to use appContext
@@ -154,7 +154,8 @@ public class TickProcessor {
                     signal.getPrice(),
                     signal.getQuantity(),
                     volatility, // Placeholder volatility
-                    true // Assuming it's a long position
+                    true, // Assuming it's a long position
+                    signal.getAction() // Pass the TradeAction from the signal
             );
             positions.put(signal.getInstrumentToken(), newPosition);
             logger.info("Position UPDATED for {}: New position: {}", signal.getSymbol(), newPosition);

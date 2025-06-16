@@ -12,6 +12,7 @@ import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Collectors;
 import com.zerodhatech.models.Tick; // Ensure this is imported for the public method
 import com.zerodhatech.models.OHLC;  // For CSV formatting
 import com.zerodhatech.models.Depth; // For CSV formatting

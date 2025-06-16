@@ -56,19 +56,19 @@ public class TickAggregator {
         this.registry = registry;
     }
 
-    private void setTickMode(Tick tick, String newMode) {
+    private void setTickMode(Tick tick, Tick.Mode newMode) {
         String currentMode = tick.getMode();
         // LTP -> QUOTE -> FULL. Do not downgrade.
-        if (Tick.Mode.FULL.equals(currentMode)) {
+        if (Tick.Mode.FULL.name().equals(currentMode)) {
             return; // Already at highest level
         }
-        if (Tick.Mode.QUOTE.equals(currentMode) && Tick.Mode.LTP.equals(newMode)) {
+        if (Tick.Mode.QUOTE.name().equals(currentMode) && Tick.Mode.LTP == newMode) {
             return; // Do not downgrade from QUOTE to LTP
         }
         if (currentMode == null && newMode == null) { // no data yet
             return;
         }
-        tick.setMode(newMode);
+        tick.setMode(newMode.name());
     }
 
 
@@ -92,19 +92,19 @@ public class TickAggregator {
                 break;
             case 6: // HIGH
                 tick.setHighPrice(price);
-                 if (tick.getMode() == null || Tick.Mode.LTP.equals(tick.getMode())) setTickMode(tick, Tick.Mode.QUOTE);
+                 if (tick.getMode() == null || Tick.Mode.LTP.name().equals(tick.getMode())) setTickMode(tick, Tick.Mode.QUOTE);
                 break;
             case 7: // LOW
                 tick.setLowPrice(price);
-                if (tick.getMode() == null || Tick.Mode.LTP.equals(tick.getMode())) setTickMode(tick, Tick.Mode.QUOTE);
+                if (tick.getMode() == null || Tick.Mode.LTP.name().equals(tick.getMode())) setTickMode(tick, Tick.Mode.QUOTE);
                 break;
             case 9: // CLOSE price (previous day's close)
                 tick.setClosePrice(price);
-                if (tick.getMode() == null || Tick.Mode.LTP.equals(tick.getMode())) setTickMode(tick, Tick.Mode.QUOTE);
+                if (tick.getMode() == null || Tick.Mode.LTP.name().equals(tick.getMode())) setTickMode(tick, Tick.Mode.QUOTE);
                 break;
             case 14: // OPEN price
                 tick.setOpenPrice(price);
-                if (tick.getMode() == null || Tick.Mode.LTP.equals(tick.getMode())) setTickMode(tick, Tick.Mode.QUOTE);
+                if (tick.getMode() == null || Tick.Mode.LTP.name().equals(tick.getMode())) setTickMode(tick, Tick.Mode.QUOTE);
                 break;
             case 21: // VWAP (Hypothetical IBKR field type for daily VWAP)
                 logger.debug("Received Daily VWAP for {}: {}", tick.getSymbol(), price);
@@ -252,7 +252,7 @@ public class TickAggregator {
         OHLC formingOhlc = currentMinuteOhlc.get(tickerId);
         if (formingOhlc != null) {
             tick.setOhlc(new OHLC(formingOhlc)); // Store a copy for the current tick
-            if (tick.getMode() == null || Tick.Mode.LTP.equals(tick.getMode())) {
+            if (tick.getMode() == null || Tick.Mode.LTP.name().equals(tick.getMode())) {
                 setTickMode(tick, Tick.Mode.QUOTE);
             }
         }
@@ -351,7 +351,7 @@ public class TickAggregator {
             logger.trace("Updated tick {} with market depth. Bids: {}, Asks: {}. Mode set to FULL.", tick.getSymbol(), bids.size(), asks.size());
         } else {
             String currentMode = tick.getMode();
-            if (Tick.Mode.FULL.equals(currentMode)) {
+            if (Tick.Mode.FULL.name().equals(currentMode)) {
                  if (tick.getOhlc() != null && tick.getOhlc().getOpen() != 0.0) {
                      setTickMode(tick, Tick.Mode.QUOTE);
                  } else if (tick.getLastTradedPrice() != 0.0) {

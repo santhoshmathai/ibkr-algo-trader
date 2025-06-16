@@ -9,15 +9,17 @@ public class TradingPosition {
     private final int quantity;
     private final double volatilityAtEntry;
     private final boolean isLong;
+    private final TradeAction tradeAction;
 
     public TradingPosition(long instrumentToken, String symbol, double entryPrice,
-                           int quantity, double volatilityAtEntry, boolean isLong) {
+                           int quantity, double volatilityAtEntry, boolean isLong, TradeAction tradeAction) {
         this.instrumentToken = instrumentToken;
         this.symbol = symbol;
         this.entryPrice = entryPrice;
         this.quantity = quantity;
         this.volatilityAtEntry = volatilityAtEntry;
         this.isLong = isLong;
+        this.tradeAction = tradeAction;
     }
 
     public String getSymbol() {
@@ -48,5 +50,9 @@ public class TradingPosition {
 
     public double getVolatilityAtEntry() {
         return volatilityAtEntry;
+    }
+
+    public TradeAction getTradeAction() {
+        return tradeAction;
     }
 }
