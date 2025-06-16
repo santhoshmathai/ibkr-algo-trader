@@ -28,8 +28,8 @@ public class Tick {
     private double change;
     @SerializedName("lastTradeQuantity")
     private double lastTradedQuantity;
-    @SerializedName("averageTradePrice")
-    private double averageTradePrice;
+    @SerializedName("averagePrice") // Renamed from averageTradePrice
+    private double averagePrice;
     @SerializedName("volumeTradedToday")
     private long volumeTradedToday;
     @SerializedName("totalBuyQuantity")
@@ -52,6 +52,21 @@ public class Tick {
     // New field for symbol
     private String symbol;
 
+    // OHLC data
+    private OHLC ohlc;
+
+    // Best Bid/Ask data
+    private double bestBidPrice;
+    private double bestAskPrice;
+    private long bestBidQuantity;
+    private long bestAskQuantity;
+
+    public static enum Mode {
+        LTP,
+        QUOTE,
+        FULL
+    }
+
     // Getters and setters
     public String getSymbol() {
         return symbol;
@@ -59,6 +74,46 @@ public class Tick {
 
     public void setSymbol(String symbol) {
         this.symbol = symbol;
+    }
+
+    public OHLC getOhlc() {
+        return ohlc;
+    }
+
+    public void setOhlc(OHLC ohlc) {
+        this.ohlc = ohlc;
+    }
+
+    public double getBestBidPrice() {
+        return bestBidPrice;
+    }
+
+    public void setBestBidPrice(double bestBidPrice) {
+        this.bestBidPrice = bestBidPrice;
+    }
+
+    public double getBestAskPrice() {
+        return bestAskPrice;
+    }
+
+    public void setBestAskPrice(double bestAskPrice) {
+        this.bestAskPrice = bestAskPrice;
+    }
+
+    public long getBestBidQuantity() {
+        return bestBidQuantity;
+    }
+
+    public void setBestBidQuantity(long bestBidQuantity) {
+        this.bestBidQuantity = bestBidQuantity;
+    }
+
+    public long getBestAskQuantity() {
+        return bestAskQuantity;
+    }
+
+    public void setBestAskQuantity(long bestAskQuantity) {
+        this.bestAskQuantity = bestAskQuantity;
     }
 
     public Date getLastTradedTime() {
@@ -181,12 +236,12 @@ public class Tick {
         this.lastTradedQuantity = lastTradedQuantity;
     }
 
-    public double getAverageTradePrice() {
-        return averageTradePrice;
+    public double getAveragePrice() { // Renamed from getAverageTradePrice
+        return averagePrice;
     }
 
-    public void setAverageTradePrice(double averageTradePrice) {
-        this.averageTradePrice = averageTradePrice;
+    public void setAveragePrice(double averagePrice) { // Renamed from setAverageTradePrice
+        this.averagePrice = averagePrice;
     }
 
     public long getVolumeTradedToday() {

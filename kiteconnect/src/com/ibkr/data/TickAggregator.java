@@ -26,9 +26,30 @@ public class TickAggregator {
 
     // Fields for Market Depth
     // These store the full depth received from IBKR (up to MAX_DEPTH_LEVELS)
-    private final Map<Integer, List<Depth.Quote>> currentBidDepthLevels = new ConcurrentHashMap<>();
-    private final Map<Integer, List<Depth.Quote>> currentAskDepthLevels = new ConcurrentHashMap<>();
+    private final Map<Integer, List<Quote>> currentBidDepthLevels = new ConcurrentHashMap<>();
+    private final Map<Integer, List<Quote>> currentAskDepthLevels = new ConcurrentHashMap<>();
     private static final int MAX_DEPTH_LEVELS = 20;
+
+    private static class Quote {
+        private double price;
+        private int quantity;
+
+        public double getPrice() {
+            return price;
+        }
+
+        public void setPrice(double price) {
+            this.price = price;
+        }
+
+        public int getQuantity() {
+            return quantity;
+        }
+
+        public void setQuantity(int quantity) {
+            this.quantity = quantity;
+        }
+    }
 
 
     public TickAggregator(InstrumentRegistry registry) {
@@ -253,14 +274,14 @@ public class TickAggregator {
 
         Tick tick = getOrCreateTick(tickerId);
         // Use currentBidDepthLevels and currentAskDepthLevels
-        List<Depth.Quote> depthLevelsList = (side == 1) ?
+        List<Quote> depthLevelsList = (side == 1) ?
                 currentBidDepthLevels.computeIfAbsent(tickerId, k -> new ArrayList<>()) :
                 currentAskDepthLevels.computeIfAbsent(tickerId, k -> new ArrayList<>());
 
         switch (operation) {
             case 0: // Insert
-                Depth.Quote newQuote = new Depth.Quote();
-                newQuote.setPrice(price); newQuote.setQuantity(size); // Assuming Depth.Quote is a simple POJO
+                Quote newQuote = new Quote();
+                newQuote.setPrice(price); newQuote.setQuantity(size);
                 if (position < depthLevelsList.size()) {
                     depthLevelsList.add(position, newQuote);
                 } else {
@@ -272,11 +293,11 @@ public class TickAggregator {
                 break;
             case 1: // Update
                 if (position < depthLevelsList.size()) {
-                    Depth.Quote quoteToUpdate = depthLevelsList.get(position);
+                    Quote quoteToUpdate = depthLevelsList.get(position);
                     quoteToUpdate.setPrice(price); quoteToUpdate.setQuantity(size);
                 } else {
                      logger.warn("Market depth update for {} at position {} out of bounds (size {}). Treating as insert.", tick.getSymbol(), position, depthLevelsList.size());
-                     Depth.Quote updateAsNewQuote = new Depth.Quote();
+                     Quote updateAsNewQuote = new Quote();
                      updateAsNewQuote.setPrice(price); updateAsNewQuote.setQuantity(size);
                      depthLevelsList.add(updateAsNewQuote);
                      while (depthLevelsList.size() > MAX_DEPTH_LEVELS) {
@@ -297,16 +318,16 @@ public class TickAggregator {
         }
 
         if (side == 1) {
-            depthLevelsList.sort(Comparator.comparingDouble(Depth.Quote::getPrice).reversed());
+            depthLevelsList.sort(Comparator.comparingDouble(Quote::getPrice).reversed());
         } else {
-            depthLevelsList.sort(Comparator.comparingDouble(Depth.Quote::getPrice));
+            depthLevelsList.sort(Comparator.comparingDouble(Quote::getPrice));
         }
 
         Map<String, ArrayList<Depth>> newMarketDepthMap = new HashMap<>();
         ArrayList<Depth> bids = new ArrayList<>();
-        List<Depth.Quote> currentBids = currentBidDepthLevels.getOrDefault(tickerId, new ArrayList<>());
+        List<Quote> currentBids = currentBidDepthLevels.getOrDefault(tickerId, new ArrayList<>());
         for (int i = 0; i < Math.min(5, currentBids.size()); i++) {
-            Depth.Quote q = currentBids.get(i);
+            Quote q = currentBids.get(i);
             Depth d = new Depth();
             d.setPrice(q.getPrice()); d.setQuantity(q.getQuantity()); d.setOrders(0);
             bids.add(d);
@@ -314,9 +335,9 @@ public class TickAggregator {
         newMarketDepthMap.put("buy", bids);
 
         ArrayList<Depth> asks = new ArrayList<>();
-        List<Depth.Quote> currentAsks = currentAskDepthLevels.getOrDefault(tickerId, new ArrayList<>());
+        List<Quote> currentAsks = currentAskDepthLevels.getOrDefault(tickerId, new ArrayList<>());
         for (int i = 0; i < Math.min(5, currentAsks.size()); i++) {
-            Depth.Quote q = currentAsks.get(i);
+            Quote q = currentAsks.get(i);
             Depth d = new Depth();
             d.setPrice(q.getPrice()); d.setQuantity(q.getQuantity()); d.setOrders(0);
             asks.add(d);
