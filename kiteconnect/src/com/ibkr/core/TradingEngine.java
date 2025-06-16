@@ -10,11 +10,13 @@ import com.zerodhatech.models.Tick;
 import com.ibkr.models.TradingSignal;
 import com.ibkr.models.TradingPosition;
 import com.ibkr.models.TradeAction;
+import com.ibkr.models.OpeningMarketTrend; // New import
 import org.slf4j.Logger; // Added
 import org.slf4j.LoggerFactory; // Added
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map; // New import
 import java.util.Set;
 
 public class TradingEngine {
@@ -170,6 +172,10 @@ public class TradingEngine {
     }
 
     private int calculateSize(Tick tick, TradeAction action) {
+        if (tick == null) {
+            logger.warn("Calculating default size as tick is null (likely for general opening signal list).");
+            return 10; // Default placeholder size
+        }
         double baseSize = 1000; // Shares
         double vwapVolatility = vwapAnalyzer.getVolatility();
         double volatilityAdjustment = 1 / Math.max(0.01, vwapVolatility); // Prevent division by zero
@@ -193,87 +199,65 @@ public class TradingEngine {
         return vwapAnalyzer.getVolatility() > (tick.getLastTradedPrice() * 0.05); // 5% threshold
     }
 
-    public List<TradingSignal> generateOpeningSignals(Tick tick) {
-        List<TradingSignal> signals = new ArrayList<>();
-        logger.debug("Attempting to generate opening signals for tick: {}", tick.getSymbol());
+    public List<TradingSignal> generateOpeningSignals(
+            OpeningMarketTrend overallOpeningTrend,
+            Map<String, Double> stockOpeningPrices,
+            Set<String> monitoredSymbols,
+            Map<String, Tick> currentTickData) {
 
-        if (!marketSentimentAnalyzer.isInAnalysisWindow()) {
-            logger.debug("Market sentiment analyzer not in analysis window. No opening signals generated.");
+        List<TradingSignal> signals = new ArrayList<>();
+        logger.info("Generating opening signals. Overall Trend: {}, Monitored Symbols: {}", overallOpeningTrend, monitoredSymbols.size());
+
+        if (overallOpeningTrend == OpeningMarketTrend.OBSERVATION_PERIOD ||
+            overallOpeningTrend == OpeningMarketTrend.OUTSIDE_ANALYSIS_WINDOW ||
+            overallOpeningTrend == OpeningMarketTrend.TREND_NEUTRAL) {
+            logger.debug("Not generating opening signals due to overall trend: {}", overallOpeningTrend);
             return signals;
         }
 
-        MarketSentimentAnalyzer.MarketSentiment sentiment = marketSentimentAnalyzer.getMarketSentiment();
-        logger.info("Current market sentiment for opening signals: {}", sentiment);
+        double individualStockMoveThreshold = 0.005; // 0.5% move from open
+        int maxSignalsToGenerate = 3; // Limit opening trades
 
-        switch (sentiment) {
-            case STRONG_UP:
-                signals.addAll(generateBullishSignals(tick));
-                logger.info("Generated {} bullish opening signals.", signals.size());
-                break;
-            case STRONG_DOWN:
-                List<TradingSignal> bearishSignals = generateBearishSignals(tick);
-                signals.addAll(bearishSignals);
-                logger.info("Generated {} bearish opening signals.", bearishSignals.size());
-                break;
-            default:
-                logger.info("Neutral market sentiment. No opening signals generated based on sentiment.");
-                break;
+        for (String symbol : monitoredSymbols) {
+            if (signals.size() >= maxSignalsToGenerate) break;
+
+            Tick tick = currentTickData.get(symbol);
+            Double openPrice = stockOpeningPrices.get(symbol);
+
+            if (tick == null || openPrice == null || openPrice == 0) {
+                // logger.trace("Skipping symbol {} for opening signal: missing tick or openPrice.", symbol);
+                continue;
+            }
+
+            boolean stockMovingWithTrend = false;
+            if (overallOpeningTrend == OpeningMarketTrend.TREND_UP && tick.getLastTradedPrice() > openPrice * (1 + individualStockMoveThreshold)) {
+                stockMovingWithTrend = true;
+            } else if (overallOpeningTrend == OpeningMarketTrend.TREND_DOWN && tick.getLastTradedPrice() < openPrice * (1 - individualStockMoveThreshold)) {
+                stockMovingWithTrend = true; // For potential short/avoid long
+            }
+
+            if (stockMovingWithTrend) {
+                // Further filtering by sector can be added here if SectorStrengthAnalyzer is enhanced
+                // String sector = sectorStrengthAnalyzer.getSector(symbol);
+                // if (sector != null && sectorStrengthAnalyzer.isSectorAlignedWithTrend(sector, overallOpeningTrend))
+
+                TradeAction action = (overallOpeningTrend == OpeningMarketTrend.TREND_UP) ? TradeAction.BUY : TradeAction.SELL;
+                // Basic check: only BUY on TREND_UP for now, no SELL on TREND_DOWN yet.
+                if (action == TradeAction.BUY) {
+                     TradingSignal signal = new TradingSignal.Builder()
+                          .symbol(symbol)
+                          .action(action)
+                          .quantity(calculateSize(tick, action)) // Now passing the specific tick
+                          .price(tick.getLastTradedPrice()) // Use current price for signal
+                          .strategyId("OPENING_MARKET_TREND")
+                          .build();
+                     signals.add(signal);
+                     logger.info("Generated opening signal for {}: {} based on market trend {} and stock movement.", symbol, action, overallOpeningTrend);
+                }
+            }
         }
         return signals;
     }
 
-    private List<TradingSignal> generateBullishSignals(Tick tick) {
-        List<TradingSignal> signals = new ArrayList<>();
-        logger.debug("Generating bullish signals based on top sectors and performers.");
-        List<String> topSectors = sectorStrengthAnalyzer.getTopSectors(3);
-        List<String> topStocks = marketSentimentAnalyzer.getTopPerformers(20, true);
-        logger.debug("Top sectors: {}. Top performing stocks: {}", topSectors, topStocks);
-
-        topStocks.stream()
-                .filter(symbol -> {
-                    String sector = sectorStrengthAnalyzer.getSector(symbol);
-                    boolean inTopSector = sector != null && topSectors.contains(sector);
-                    logger.trace("Bullish filter: Symbol {}, Sector {}, InTopSector: {}", symbol, sector, inTopSector);
-                    return inTopSector;
-                })
-                .limit(5)
-                .forEach(symbol -> {
-                    TradingSignal signal = new TradingSignal.Builder()
-                            .symbol(symbol)
-                            .action(TradeAction.BUY)
-                            .quantity(calculateSize(tick, TradeAction.BUY)) // tick here is a generic market tick, might not be ideal for specific symbol sizing
-                            .build();
-                    signals.add(signal);
-                    logger.debug("Generated bullish signal: {}", signal);
-                });
-        return signals;
-    }
-
-    private List<TradingSignal> generateBearishSignals(Tick tick) {
-        List<TradingSignal> signals = new ArrayList<>();
-        logger.debug("Generating bearish signals based on weakest sectors and performers.");
-        List<String> weakSectors = sectorStrengthAnalyzer.getBottomSectors(3);
-        List<String> bottomStocks = marketSentimentAnalyzer.getTopPerformers(20, false);
-        logger.debug("Weak sectors: {}. Bottom performing stocks: {}", weakSectors, bottomStocks);
-
-        bottomStocks.stream()
-                .filter(symbol -> {
-                    String sector = sectorStrengthAnalyzer.getSector(symbol);
-                    boolean inWeakSector = sector != null && weakSectors.contains(sector);
-                    logger.trace("Bearish filter: Symbol {}, Sector {}, InWeakSector: {}", symbol, sector, inWeakSector);
-                    return inWeakSector;
-                })
-                .limit(5)
-                .forEach(symbol -> {
-                    TradingSignal signal = new TradingSignal.Builder()
-                            .symbol(symbol)
-                            .action(TradeAction.SELL)
-                            .quantity(calculateSize(tick, TradeAction.SELL)) // tick here is a generic market tick
-                            .build();
-                    signals.add(signal);
-                    logger.debug("Generated bearish signal: {}", signal);
-                });
-        return signals;
-    }
-
+    // Removed generateBullishSignals and generateBearishSignals methods
 }
