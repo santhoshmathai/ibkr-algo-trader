@@ -1,6 +1,7 @@
 package com.ibkr.data;
 
 import com.ib.client.Contract;
+import com.ibkr.AppContext; // Added for AppContext
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -8,7 +9,11 @@ public class InstrumentRegistry {
     private final Map<Integer, Contract> tickerIdToContract = new ConcurrentHashMap<>();
     private final Map<Integer, String> tickerIdToSymbol = new ConcurrentHashMap<>();
     private final Map<String, Integer> symbolToTickerId = new ConcurrentHashMap<>();
-    private int nextTickerId = 1000;
+    private final AppContext appContext; // Added
+
+    public InstrumentRegistry(AppContext appContext) { // Added constructor
+        this.appContext = appContext;
+    }
 
     public synchronized int registerInstrument(Contract contract) {
         String symbol = contract.symbol();
@@ -16,7 +21,7 @@ public class InstrumentRegistry {
             return symbolToTickerId.get(symbol);
         }
 
-        int tickerId = nextTickerId++;
+        int tickerId = appContext.getNextRequestId(); // Changed
         tickerIdToContract.put(tickerId, contract);
         tickerIdToSymbol.put(tickerId, symbol);
         symbolToTickerId.put(symbol, tickerId);
