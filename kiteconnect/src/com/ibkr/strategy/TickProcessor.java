@@ -44,6 +44,51 @@ public class TickProcessor {
                 new TradingPosition(tick.getInstrumentToken(), tick.getSymbol(), 0, 0, 0.0, true, null));
         logger.debug("Current position for {}: {}", tick.getSymbol(), currentPosition);
 
+        // Stop-loss check
+        if (currentPosition.isInPosition()) {
+            double stopLossPercent = 0.01; // 1%
+            try {
+                double stopLossPrice = currentPosition.getStopLossPrice(stopLossPercent);
+                logger.debug("Symbol: {}, Entry: {}, Current LTP: {}, Calculated SL: {} for {}%",
+                    tick.getSymbol(), currentPosition.getEntryPrice(), tick.getLastTradedPrice(), stopLossPrice, stopLossPercent * 100);
+
+                boolean stopLossHit = false;
+                if (currentPosition.isLong() && tick.getLastTradedPrice() <= stopLossPrice) {
+                    stopLossHit = true;
+                }
+                // else if (!currentPosition.isLong() && tick.getLastTradedPrice() >= stopLossPrice) {
+                //     // Logic for short position stop-loss, if shorting is implemented
+                //     // stopLossHit = true;
+                // }
+
+                if (stopLossHit) {
+                    logger.warn("STOP-LOSS HIT for symbol {}: LTP {} breached SL price {}. Position: {}",
+                        tick.getSymbol(), tick.getLastTradedPrice(), stopLossPrice, currentPosition);
+
+                    // Create immediate exit signal
+                    TradeAction exitAction = currentPosition.isLong() ? TradeAction.SELL : TradeAction.BUY; // BUY to cover short
+                    TradingSignal exitSignal = new TradingSignal.Builder()
+                        .instrumentToken(currentPosition.getInstrumentToken())
+                        .symbol(currentPosition.getSymbol())
+                        .action(exitAction)
+                        .quantity(currentPosition.getQuantity())
+                        .price(tick.getLastTradedPrice()) // Use last traded price for exit
+                        .strategyId("STOP_LOSS")
+                        .build();
+
+                    logger.info("Executing STOP-LOSS trade for {}: {}", tick.getSymbol(), exitSignal);
+                    executeTrade(exitSignal);
+                    updatePosition(exitSignal, tick);
+
+                    return; // Exit further processing for this tick
+                }
+            } catch (IllegalStateException e) {
+                logger.error("IllegalStateException while calculating stop-loss for {}. This should not happen for an active position. Position: {}", tick.getSymbol(), currentPosition, e);
+            } catch (IllegalArgumentException e) {
+                logger.error("IllegalArgumentException while calculating stop-loss for {}. Stop-loss percentage {} is invalid.", tick.getSymbol(), stopLossPercent, e);
+            }
+        }
+
         boolean openingWindow = appContext.isMarketInOpeningWindow(); // Changed to use appContext
         boolean openingSignalActedUpon = false;
 
