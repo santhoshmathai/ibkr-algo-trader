@@ -99,7 +99,7 @@ public class BreakoutSignalGenerator {
             if (level.getType() == com.ibkr.models.LevelType.RESISTANCE) {
                 boolean conditionOpenBelow = tick.getOpenPrice() <= level.getLevelPrice();
                 boolean conditionLtpAbove = tick.getLastTradedPrice() > level.getLevelPrice();
-                boolean conditionNotTooFar = tick.getLastTradedPrice() <= (level.getLevelPrice() * 1.005);
+                boolean conditionNotTooFar = tick.getLastTradedPrice() <= (level.getLevelPrice() * 1.010); // Changed 0.5% to 1.0%
 
                 if (conditionLtpAbove && conditionOpenBelow && conditionNotTooFar) {
                     resistanceBroken = true;
@@ -108,7 +108,7 @@ public class BreakoutSignalGenerator {
                         tick.getSymbol(), brokenResistanceLevel, tick.getOpenPrice(), tick.getLastTradedPrice());
                     break;
                 } else {
-                    logger.trace("isUpwardBreakout for {}: Resistance level {:.2f} not met for breakout. Open: {:.2f}, LTP: {:.2f}, LTP > R: {}, Open <= R: {}, LTP <= R*1.005: {}",
+                    logger.trace("isUpwardBreakout for {}: Resistance level {:.2f} not met for breakout. Open: {:.2f}, LTP: {:.2f}, LTP > R: {}, Open <= R: {}, LTP <= R*1.010: {}",
                         tick.getSymbol(), level.getLevelPrice(), tick.getOpenPrice(), tick.getLastTradedPrice(), conditionLtpAbove, conditionOpenBelow, conditionNotTooFar);
                 }
             }
@@ -158,7 +158,7 @@ public class BreakoutSignalGenerator {
             if (level.getType() == com.ibkr.models.LevelType.SUPPORT) {
                 boolean conditionOpenAbove = tick.getOpenPrice() >= level.getLevelPrice();
                 boolean conditionLtpBelow = tick.getLastTradedPrice() < level.getLevelPrice();
-                boolean conditionNotTooFar = tick.getLastTradedPrice() >= (level.getLevelPrice() * 0.995);
+                boolean conditionNotTooFar = tick.getLastTradedPrice() >= (level.getLevelPrice() * 0.990); // Changed 0.5% to 1.0%
 
                 if (conditionLtpBelow && conditionOpenAbove && conditionNotTooFar) {
                     supportBroken = true;
@@ -167,7 +167,7 @@ public class BreakoutSignalGenerator {
                         tick.getSymbol(), brokenSupportLevel, tick.getOpenPrice(), tick.getLastTradedPrice());
                     break;
                 } else {
-                     logger.trace("isDownwardBreakdown for {}: Support level {:.2f} not met for breakdown. Open: {:.2f}, LTP: {:.2f}, LTP < S: {}, Open >= S: {}, LTP >= S*0.995: {}",
+                     logger.trace("isDownwardBreakdown for {}: Support level {:.2f} not met for breakdown. Open: {:.2f}, LTP: {:.2f}, LTP < S: {}, Open >= S: {}, LTP >= S*0.990: {}",
                         tick.getSymbol(), level.getLevelPrice(), tick.getOpenPrice(), tick.getLastTradedPrice(), conditionLtpBelow, conditionOpenAbove, conditionNotTooFar);
                 }
             }
