@@ -510,8 +510,28 @@ public class IBClient implements EWrapper {
                 Map<String, PreviousDayData> fetchedData = this.fetchPreviousDayDataForAllStocks(symbolsToFetch);
                 appContext.setPreviousDayDataMap(fetchedData);
                 logger.info("Historical data fetch initiated and completed. {} symbols processed.", fetchedData.size());
+
+                // Calculate S/R levels after historical data is set
+                if (appContext.getSupportResistanceAnalyzer() != null && fetchedData != null && !fetchedData.isEmpty()) {
+                    logger.info("Calculating daily Support/Resistance levels for {} symbols...", fetchedData.size());
+                    appContext.getSupportResistanceAnalyzer().clearAllLevels();
+                    for (String symbol : fetchedData.keySet()) {
+                        if (appContext.getPreviousDayData(symbol) != null) { // Ensure data is in AppContext
+                             appContext.getSupportResistanceAnalyzer().calculateDailyLevels(symbol);
+                        } else {
+                             logger.warn("Skipping S/R calculation for symbol {} as its PreviousDayData is null in AppContext after fetch.", symbol);
+                        }
+                    }
+                    logger.info("Daily Support/Resistance level calculation complete.");
+                } else {
+                    if (fetchedData == null || fetchedData.isEmpty()) {
+                        logger.warn("Skipping S/R calculation as no historical data was fetched.");
+                    } else {
+                        logger.error("SupportResistanceAnalyzer is null in AppContext. Cannot calculate S/R levels.");
+                    }
+                }
             } catch (Exception e) {
-                logger.error("Error during historical data fetch initiation: {}", e.getMessage(), e);
+                logger.error("Error during historical data fetch initiation or S/R calculation: {}", e.getMessage(), e);
                 if (appContext.getPreviousDayDataMap() != null) {
                      appContext.getPreviousDayDataMap().clear();
                 }
