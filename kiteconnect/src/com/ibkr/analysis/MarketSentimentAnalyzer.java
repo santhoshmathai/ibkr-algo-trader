@@ -1,33 +1,58 @@
 package com.ibkr.analysis;
 
 import com.ibkr.AppContext;
-import com.ibkr.models.PreviousDayData; // Added
+import com.ibkr.models.OpeningMarketTrend; // New import
+import com.ibkr.models.PreviousDayData;
 import com.zerodhatech.models.Tick;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.time.LocalTime; // New import
+import java.time.ZoneId; // New import
+import java.time.ZonedDateTime; // New import
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class MarketSentimentAnalyzer {
-    private static final Logger logger = LoggerFactory.getLogger(MarketSentimentAnalyzer.class); // Added
-    private final Map<String, Double> openingPrices = new ConcurrentHashMap<>();
-    private final Map<String, Integer> tickerDirection = new ConcurrentHashMap<>();
+    private static final Logger logger = LoggerFactory.getLogger(MarketSentimentAnalyzer.class);
+    private final Map<String, Double> openingPrices = new ConcurrentHashMap<>(); // Still used for stock's daily open
+    private final Map<String, Integer> tickerDirection = new ConcurrentHashMap<>(); // For general sentiment
     private final Set<String> monitoredSymbols = ConcurrentHashMap.newKeySet();
-    private final long marketOpenTime;
-    private boolean isInitialized = false;
-    private final AppContext appContext; // Added
+    // private final long marketOpenTime; // Replaced by LocalTime logic
+    private boolean isInitialized = false; // Might be repurposed or removed if new init logic covers it
+    private final AppContext appContext;
 
-    // Thresholds
+    // New fields for Opening Trend
+    private int openingObservationMinutes;
+    private LocalTime actualMarketOpenTime;
+    private LocalTime openingObservationEndTime;
+    private LocalTime openingAnalysisWindowEndTime;
+
+    private boolean openingTrendCalculated = false;
+    private OpeningMarketTrend determinedOpeningTrend = OpeningMarketTrend.OUTSIDE_ANALYSIS_WINDOW;
+    private final Map<String, Double> stockLastPriceInObservation = new ConcurrentHashMap<>();
+
+
+    // Thresholds for general sentiment
     private static final double SENTIMENT_THRESHOLD = 0.6; // 60%
-    private static final long ANALYSIS_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
+    // private static final long ANALYSIS_WINDOW_MS = 30 * 60 * 1000; // Replaced by openingAnalysisWindowEndTime
 
-    public MarketSentimentAnalyzer(AppContext appContext, Collection<String> symbols) { // Added appContext
-        this.appContext = appContext; // Added
-        this.monitoredSymbols.addAll(symbols);
-        this.marketOpenTime = System.currentTimeMillis();
-        logger.info("MarketSentimentAnalyzer initialized with {} symbols. AppContext provided. Market open time set to: {}", symbols.size(), new Date(this.marketOpenTime));
+    public MarketSentimentAnalyzer(AppContext appContext, Collection<String> symbolsToMonitor, int openingObservationMinutes, LocalTime actualMarketOpenTime) {
+        this.appContext = appContext;
+        this.monitoredSymbols.addAll(symbolsToMonitor);
+        this.openingObservationMinutes = openingObservationMinutes;
+        this.actualMarketOpenTime = actualMarketOpenTime;
+
+        this.openingObservationEndTime = this.actualMarketOpenTime.plusMinutes(this.openingObservationMinutes);
+        this.openingAnalysisWindowEndTime = this.actualMarketOpenTime.plusMinutes(30); // Fixed 30 min total opening window
+
+        updateCurrentOpeningTrendStatus(); // Initialize trend status
+
+        logger.info("MarketSentimentAnalyzer initialized. Symbols: {}, Observation: {} mins, Market Open: {}, Observation End: {}, Analysis Window End: {}",
+                  symbolsToMonitor.size(), openingObservationMinutes, this.actualMarketOpenTime, this.openingObservationEndTime, this.openingAnalysisWindowEndTime);
     }
 
+    // Old update method, to be reviewed/refactored.
+    // For now, let's assume it's for general sentiment outside opening trend.
     public synchronized void update(Tick tick) {
         logger.trace("Update called for tick: {}", tick.getSymbol());
         if (!isInitialized && isMarketOpen()) {
@@ -148,12 +173,20 @@ public class MarketSentimentAnalyzer {
     }
 
     public boolean isInAnalysisWindow() {
-        boolean inWindow = System.currentTimeMillis() - marketOpenTime <= ANALYSIS_WINDOW_MS;
-        logger.trace("isInAnalysisWindow check: CurrentTimeMillis: {}, MarketOpenTime: {}, AnalysisWindowMs: {}. Result: {}",
-                System.currentTimeMillis(), marketOpenTime, ANALYSIS_WINDOW_MS, inWindow);
+        // This method needs to be updated to use the new time logic if it's still relevant
+        // For opening trend, openingAnalysisWindowEndTime is used.
+        // For general sentiment, this might define a different window or be removed.
+        // For now, let's assume it refers to the opening analysis window.
+        ZoneId marketTimeZone = ZoneId.of("America/New_York");
+        LocalTime currentTimeET = ZonedDateTime.now(marketTimeZone).toLocalTime();
+        boolean inWindow = currentTimeET.isAfter(actualMarketOpenTime) && currentTimeET.isBefore(openingAnalysisWindowEndTime);
+        logger.trace("isInAnalysisWindow check: CurrentTimeET: {}, ActualMarketOpenTime: {}, OpeningAnalysisWindowEndTime: {}. Result: {}",
+                currentTimeET, actualMarketOpenTime, openingAnalysisWindowEndTime, inWindow);
         return inWindow;
     }
 
+    // This method's role is partially taken by updateOpeningTickAnalysis for recording openingPrices.
+    // It also had gap logic. Review if this is still needed or if gap logic moves.
     private synchronized void initializeOpeningPrices(Tick tick) {
         String symbol = tick.getSymbol();
         if (!openingPrices.containsKey(symbol)) {
@@ -191,5 +224,113 @@ public class MarketSentimentAnalyzer {
 
     public enum MarketSentiment {
         STRONG_UP, STRONG_DOWN, NEUTRAL
+    }
+
+    private void updateCurrentOpeningTrendStatus() {
+        if (appContext == null) {
+            this.determinedOpeningTrend = OpeningMarketTrend.OUTSIDE_ANALYSIS_WINDOW;
+            return;
+        }
+        ZoneId marketTimeZone = ZoneId.of("America/New_York");
+        LocalTime currentTimeET = ZonedDateTime.now(marketTimeZone).toLocalTime();
+
+        if (currentTimeET.isBefore(actualMarketOpenTime) || currentTimeET.isAfter(openingAnalysisWindowEndTime)) {
+            this.determinedOpeningTrend = OpeningMarketTrend.OUTSIDE_ANALYSIS_WINDOW;
+            this.openingTrendCalculated = true;
+        } else if (currentTimeET.isBefore(openingObservationEndTime)) {
+            this.determinedOpeningTrend = OpeningMarketTrend.OBSERVATION_PERIOD;
+            this.openingTrendCalculated = false;
+        } else {
+            // If trend hasn't been calculated, it's pending. updateOpeningTickAnalysis will trigger it.
+            // If it was already calculated, it holds its value.
+            // No change to determinedOpeningTrend here directly unless to ensure it's not OBSERVATION_PERIOD.
+        }
+    }
+
+    public synchronized void updateOpeningTickAnalysis(Tick tick) {
+        if (!monitoredSymbols.contains(tick.getSymbol())) {
+            return;
+        }
+
+        ZoneId marketTimeZone = ZoneId.of("America/New_York");
+        LocalTime currentTimeET = ZonedDateTime.now(marketTimeZone).toLocalTime();
+
+        openingPrices.putIfAbsent(tick.getSymbol(), tick.getOpenPrice() != 0 ? tick.getOpenPrice() : tick.getLastTradedPrice());
+
+        if (currentTimeET.isAfter(actualMarketOpenTime) && currentTimeET.isBefore(openingObservationEndTime) && !openingTrendCalculated) {
+            this.determinedOpeningTrend = OpeningMarketTrend.OBSERVATION_PERIOD;
+            stockLastPriceInObservation.put(tick.getSymbol(), tick.getLastTradedPrice());
+            return;
+        }
+
+        if (currentTimeET.isAfter(openingObservationEndTime) && currentTimeET.isBefore(openingAnalysisWindowEndTime) && !openingTrendCalculated) {
+            calculateDeterminedOpeningTrend();
+        }
+        // Optionally call general sentiment update: this.update(tick);
+    }
+
+    private synchronized void calculateDeterminedOpeningTrend() {
+        if (openingTrendCalculated) return;
+
+        logger.info("Calculating determined opening market trend after observation period.");
+        long stocksUp = 0;
+        long stocksDown = 0;
+        int trackedStocksWithData = 0;
+
+        for (String symbol : monitoredSymbols) {
+            Double openPrice = openingPrices.get(symbol);
+            Double lastObservedPrice = stockLastPriceInObservation.get(symbol);
+
+            if (openPrice == null || lastObservedPrice == null || openPrice == 0) {
+                continue;
+            }
+            trackedStocksWithData++;
+
+            double threshold = 0.001;
+            if (lastObservedPrice > openPrice * (1 + threshold)) {
+                stocksUp++;
+            } else if (lastObservedPrice < openPrice * (1 - threshold)) {
+                stocksDown++;
+            }
+        }
+
+        if (trackedStocksWithData == 0) {
+            logger.warn("No stock data available to calculate opening market trend. Setting to NEUTRAL.");
+            this.determinedOpeningTrend = OpeningMarketTrend.TREND_NEUTRAL;
+        } else {
+            double upRatio = (double) stocksUp / trackedStocksWithData;
+            double downRatio = (double) stocksDown / trackedStocksWithData;
+            logger.info("Opening trend calculation: Stocks Up: {}, Stocks Down: {}, Tracked: {}, UpRatio: {:.2f}, DownRatio: {:.2f}",
+                stocksUp, stocksDown, trackedStocksWithData, upRatio, downRatio);
+
+            if (upRatio >= 0.70) {
+                this.determinedOpeningTrend = OpeningMarketTrend.TREND_UP;
+            } else if (downRatio >= 0.70) {
+                this.determinedOpeningTrend = OpeningMarketTrend.TREND_DOWN;
+            } else {
+                this.determinedOpeningTrend = OpeningMarketTrend.TREND_NEUTRAL;
+            }
+        }
+        this.openingTrendCalculated = true;
+        logger.info("Determined Opening Market Trend: {}", this.determinedOpeningTrend);
+    }
+
+    public OpeningMarketTrend getDeterminedOpeningTrend() {
+        ZoneId marketTimeZone = ZoneId.of("America/New_York");
+        LocalTime currentTimeET = ZonedDateTime.now(marketTimeZone).toLocalTime();
+
+        if (currentTimeET.isBefore(actualMarketOpenTime) || currentTimeET.isAfter(openingAnalysisWindowEndTime)) {
+            return OpeningMarketTrend.OUTSIDE_ANALYSIS_WINDOW;
+        }
+        if (!openingTrendCalculated && currentTimeET.isBefore(openingObservationEndTime)) {
+            return OpeningMarketTrend.OBSERVATION_PERIOD;
+        }
+        // Consider if calculateDeterminedOpeningTrend should be called here if conditions met and not yet calculated.
+        // Current logic in updateOpeningTickAnalysis might be sufficient if ticks are frequent.
+        return this.determinedOpeningTrend;
+    }
+
+    public Map<String, Double> getStockOpeningPrices() {
+        return Collections.unmodifiableMap(this.openingPrices);
     }
 }

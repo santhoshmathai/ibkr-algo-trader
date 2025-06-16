@@ -1,9 +1,11 @@
 package com.ibkr.strategy;
 
-import com.ibkr.AppContext; // Added
-// Removed MarketSentimentAnalyzer import as it's not directly used here
+import com.ibkr.AppContext;
+import com.ibkr.analysis.MarketSentimentAnalyzer; // New import
 import com.ibkr.core.TradingEngine;
+import com.ibkr.data.TickAggregator; // New import
 import com.ibkr.IBOrderExecutor;
+import com.ibkr.models.OpeningMarketTrend; // New import
 import com.ibkr.models.Order;
 import com.ibkr.models.TradeAction;
 import com.ibkr.models.TradingPosition;
@@ -14,9 +16,10 @@ import com.zerodhatech.models.Tick;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List; // Added
+import java.util.List;
 import java.util.Map;
-// Removed Set import as it's not directly used here
+import java.util.Set; // New import
+import java.util.HashMap; // New import
 import java.util.concurrent.ConcurrentHashMap;
 
 public class TickProcessor {
@@ -89,36 +92,97 @@ public class TickProcessor {
             }
         }
 
-        boolean openingWindow = appContext.isMarketInOpeningWindow(); // Changed to use appContext
+        boolean openingWindow = appContext.isMarketInOpeningWindow();
         boolean openingSignalActedUpon = false;
 
+        MarketSentimentAnalyzer sentimentAnalyzer = appContext.getMarketSentimentAnalyzer();
+
         if (openingWindow) {
-            logger.debug("Market is in opening window for {}. Generating opening signals.", tick.getSymbol());
-            List<TradingSignal> openingSignals = tradingEngine.generateOpeningSignals(tick);
-            if (openingSignals != null && !openingSignals.isEmpty()) {
-                logger.info("Received {} opening signals for {}.", openingSignals.size(), tick.getSymbol());
-                for (TradingSignal openingSignal : openingSignals) {
-                    if (openingSignal.getAction() != TradeAction.HOLD) {
-                        logger.debug("Processing opening signal: {}", openingSignal);
-                        if (riskManager.validateTrade(openingSignal, tick)) {
-                            logger.info("Opening trade validated for {}. Signal: {}", openingSignal.getSymbol(), openingSignal.getAction());
-                            executeTrade(openingSignal);
-                            updatePosition(openingSignal, tick); // Assuming opening signals might establish new positions
-                            openingSignalActedUpon = true;
-                            // Decide if we process multiple opening signals or just the first valid one
-                            // For now, let's assume we can act on multiple (e.g. basket)
-                        } else {
-                            logger.warn("Opening trade validation FAILED for {}. Signal: {}", openingSignal.getSymbol(), openingSignal.getAction());
+            logger.debug("Tick for {} in opening window. Updating opening tick analysis.", tick.getSymbol());
+            sentimentAnalyzer.updateOpeningTickAnalysis(tick);
+
+            OpeningMarketTrend currentOpeningTrend = sentimentAnalyzer.getDeterminedOpeningTrend();
+            logger.debug("Current Opening Market Trend for {}: {}", tick.getSymbol(), currentOpeningTrend);
+
+            if (currentOpeningTrend == OpeningMarketTrend.TREND_UP || currentOpeningTrend == OpeningMarketTrend.TREND_DOWN) {
+                logger.info("Opening market trend determined as {}. Checking for opening signals.", currentOpeningTrend);
+
+                Map<String, Double> stockOpeningPrices = sentimentAnalyzer.getStockOpeningPrices();
+                Set<String> monitoredSymbols = appContext.getTop100USStocks();
+                Map<String, Tick> currentTickData = new HashMap<>();
+                TickAggregator tickAggregator = appContext.getTickAggregator();
+
+                for (String symbol : monitoredSymbols) {
+                    Integer tickerId = appContext.getInstrumentRegistry().getTickerId(symbol);
+                    if (tickerId != null) {
+                        Tick currentSymbolTick = tickAggregator.getTick(tickerId);
+                        if (currentSymbolTick != null) {
+                            currentTickData.put(symbol, currentSymbolTick);
                         }
                     }
                 }
+                currentTickData.put(tick.getSymbol(), tick);
+
+                if (currentTickData.size() < monitoredSymbols.size() * 0.5) {
+                    logger.warn("Insufficient fresh tick data for monitored symbols (got {} of {}). Skipping opening signal generation for this cycle.", currentTickData.size(), monitoredSymbols.size());
+                } else {
+                    List<TradingSignal> openingSignals = tradingEngine.generateOpeningSignals(
+                        currentOpeningTrend,
+                        stockOpeningPrices,
+                        monitoredSymbols,
+                        currentTickData
+                    );
+
+                    if (openingSignals != null && !openingSignals.isEmpty()) {
+                        logger.info("Received {} opening signals from TradingEngine based on trend {}.", openingSignals.size(), currentOpeningTrend);
+                        for (TradingSignal openingSignal : openingSignals) {
+                            if (!tick.getSymbol().equals(openingSignal.getSymbol())) {
+                                logger.debug("Opening signal for {} ignored because current tick is for {}", openingSignal.getSymbol(), tick.getSymbol());
+                                continue;
+                            }
+
+                            TradingPosition signalSymbolPosition = positions.getOrDefault(openingSignal.getInstrumentToken(),
+                                new TradingPosition(openingSignal.getInstrumentToken(), openingSignal.getSymbol(), 0, 0, 0.0, true, null));
+
+                            if (signalSymbolPosition.isInPosition()) {
+                                 logger.info("Already in position for opening signal symbol {}. Skipping duplicate opening trade.", openingSignal.getSymbol());
+                                 continue;
+                            }
+
+                            if (openingSignal.getAction() != TradeAction.HOLD) {
+                                logger.debug("Processing opening signal: {}", openingSignal);
+                                Tick signalTick = currentTickData.get(openingSignal.getSymbol());
+                                if (signalTick == null) {
+                                     logger.warn("No current tick data for signal symbol {} during risk validation. Skipping.", openingSignal.getSymbol());
+                                     continue;
+                                }
+
+                                if (riskManager.validateTrade(openingSignal, signalTick)) {
+                                    logger.info("Opening trade validated for {}. Signal: {}", openingSignal.getSymbol(), openingSignal.getAction());
+                                    executeTrade(openingSignal);
+                                    updatePosition(openingSignal, signalTick);
+                                    openingSignalActedUpon = true;
+                                } else {
+                                    logger.warn("Opening trade validation FAILED for {}. Signal: {}", openingSignal.getSymbol(), openingSignal.getAction());
+                                }
+                            }
+                             if(openingSignalActedUpon && !allowMultipleSignalsPerTick()){
+                                 break;
+                             }
+                        }
+                    } else {
+                        logger.debug("No opening signals generated by TradingEngine for trend {}.", currentOpeningTrend);
+                    }
+                }
+            } else if (currentOpeningTrend == OpeningMarketTrend.OBSERVATION_PERIOD) {
+                logger.debug("Market in opening observation period. No trend-based opening signals generated yet for tick {}.", tick.getSymbol());
             } else {
-                logger.debug("No opening signals generated for {}.", tick.getSymbol());
+                logger.debug("Opening market trend is {} (e.g., Neutral or Outside Window). No specific opening signals generated for tick {}.", currentOpeningTrend, tick.getSymbol());
             }
         }
 
-        if (openingSignalActedUpon && !allowMultipleSignalsPerTick()) { // allowMultipleSignalsPerTick() is a hypothetical method
-             logger.info("Opening signal acted upon for {}. Skipping regular signal processing for this tick.", tick.getSymbol());
+        if (openingSignalActedUpon && !allowMultipleSignalsPerTick()) {
+             logger.info("Opening signal acted upon for this tick cycle. Skipping regular signal processing for tick {}.", tick.getSymbol());
              return;
         }
 

@@ -81,6 +81,9 @@ public class AppContext {
     private final int twsPort;
     private final int twsClientId;
 
+    // Market Sentiment Analyzer Config
+    private final int openingObservationMinutes;
+
     public AppContext() {
         // Configuration Data
         Properties properties = new Properties();
@@ -112,13 +115,30 @@ public class AppContext {
         this.twsClientId = tempClientId;
         logger.info("Loaded TWS connection params: Host={}, Port={}, ClientId={}", this.twsHost, this.twsPort, this.twsClientId);
 
+        int tempOpeningObservationMinutes;
+        try {
+            tempOpeningObservationMinutes = Integer.parseInt(properties.getProperty("market.opening.observation.minutes", "15"));
+        } catch (NumberFormatException e) {
+            logger.error("Invalid format for 'market.opening.observation.minutes' in app.properties. Using default 15.", e);
+            tempOpeningObservationMinutes = 15;
+        }
+        this.openingObservationMinutes = tempOpeningObservationMinutes;
+        logger.info("Loaded Market Opening Observation Minutes: {}", this.openingObservationMinutes);
+
+        LocalTime actualMarketOpenTime = LocalTime.of(9, 30); // Default ET market open
+
         this.top100USStocks = loadTop100USStocks(properties); // Pass loaded properties
         Map<String, List<String>> sectorToStocksMap = loadSectorToStocksMap(properties); // Pass loaded properties
         Map<String, String> symbolToSectorMap = loadSymbolToSectorMap(sectorToStocksMap); // Pass the loaded map
 
         // Level 0: No dependencies or only external config
         this.instrumentRegistry = new InstrumentRegistry(this);
-        this.marketSentimentAnalyzer = new MarketSentimentAnalyzer(this, this.top100USStocks); // Pass AppContext
+        this.marketSentimentAnalyzer = new MarketSentimentAnalyzer(
+            this,
+            this.top100USStocks,
+            this.openingObservationMinutes,
+            actualMarketOpenTime
+        );
         // Ensure SectorStrengthAnalyzer gets valid, though possibly empty, maps
         this.sectorStrengthAnalyzer = new SectorStrengthAnalyzer(
             sectorToStocksMap != null ? sectorToStocksMap : new HashMap<>(),
@@ -366,4 +386,7 @@ public class AppContext {
         logger.info("AppContext shutdown process completed.");
     }
     // Add other getters as necessary
+    public MarketSentimentAnalyzer getMarketSentimentAnalyzer() {
+        return marketSentimentAnalyzer;
+    }
 }
