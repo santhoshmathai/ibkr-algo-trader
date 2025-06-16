@@ -69,8 +69,12 @@ public class TradingSignal {
         }
     }
 
-    public static TradingSignal halt() {
-        return new Builder().action(TradeAction.HALT).build();
+    public static TradingSignal halt(String symbol) {
+        return new Builder()
+                .symbol(symbol) // Include the symbol for which trading is halted
+                .action(TradeAction.HALT)
+                .strategyId("CIRCUIT_BREAKER") // Or a more generic "SYSTEM_HALT"
+                .build();
     }
 
     public static TradingSignal hold() {
