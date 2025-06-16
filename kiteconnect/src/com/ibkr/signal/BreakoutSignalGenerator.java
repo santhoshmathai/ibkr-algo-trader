@@ -2,32 +2,39 @@ package com.ibkr.signal;
 
 
 import com.ibkr.analysis.SectorStrengthAnalyzer;
+import com.ibkr.analysis.SupportResistanceAnalyzer; // Added Import
 import com.ibkr.indicators.VWAPAnalyzer;
 import com.ibkr.indicators.VolumeAnalyzer;
 import com.ibkr.models.TradeAction;
 import com.ibkr.models.TradingSignal;
+import com.ibkr.models.SupportResistanceLevel; // New import
+import com.ibkr.models.LevelType; // New import
 import com.zerodhatech.models.Tick;
 import com.ibkr.models.TradingPosition;
 import com.ibkr.risk.VolatilityAnalyzer;
 import org.slf4j.Logger; // Added
 import org.slf4j.LoggerFactory; // Added
+import java.util.List; // New import
 
 
 public class BreakoutSignalGenerator {
     private static final Logger logger = LoggerFactory.getLogger(BreakoutSignalGenerator.class); // Added
-    private final VolatilityAnalyzer volatilityAnalyzer;
+    private final VolatilityAnalyzer volatilityAnalyzer; // This might be removed if not used by other methods
     private double breakoutThreshold = 0.02; // 2%
     private double breakdownThreshold = -0.015; // -1.5% (more sensitive for shorts)
     private final VWAPAnalyzer vwapAnalyzer;
     private final VolumeAnalyzer volumeAnalyzer;
     private final SectorStrengthAnalyzer sectorAnalyzer;
+    private final SupportResistanceAnalyzer srAnalyzer; // Added field
 
     public BreakoutSignalGenerator(VolatilityAnalyzer volatilityAnalyzer, VWAPAnalyzer vwapAnalyzer,
-                                   VolumeAnalyzer volumeAnalyzer, SectorStrengthAnalyzer sectorAnalyzer) {
+                                   VolumeAnalyzer volumeAnalyzer, SectorStrengthAnalyzer sectorAnalyzer,
+                                   SupportResistanceAnalyzer srAnalyzer) { // Added srAnalyzer
         this.volatilityAnalyzer = volatilityAnalyzer;
         this.vwapAnalyzer = vwapAnalyzer;
         this.volumeAnalyzer = volumeAnalyzer;
         this.sectorAnalyzer = sectorAnalyzer;
+        this.srAnalyzer = srAnalyzer; // Added assignment
     }
 
     public TradingSignal generateSignal(Tick tick, TradingPosition currentPosition) {
@@ -59,23 +66,121 @@ public class BreakoutSignalGenerator {
     }
 
     private boolean isUpwardBreakout(Tick tick) {
-        double movement = (tick.getLastTradedPrice() - tick.getOpenPrice()) / tick.getOpenPrice();
-        double currentVolatility = volatilityAnalyzer.getCurrentVolatility(tick);
-        double dynamicThreshold = breakoutThreshold * currentVolatility;
-        boolean isBreakout = movement > dynamicThreshold;
-        logger.trace("isUpwardBreakout for {}: Movement: {:.4f}, Volatility: {:.4f}, DynamicThreshold: {:.4f}. Result: {}",
-                tick.getSymbol(), movement, currentVolatility, dynamicThreshold, isBreakout);
-        return isBreakout;
+        if (tick == null || tick.getSymbol() == null) {
+            logger.warn("isUpwardBreakout called with null tick or symbol.");
+            return false;
+        }
+
+        // Condition 1: Price is above VWAP
+        boolean aboveVWAP = vwapAnalyzer.isAboveVWAP(tick);
+        if (!aboveVWAP) {
+            logger.trace("isUpwardBreakout for {}: Not above VWAP. VWAP: {:.2f}, LTP: {:.2f}",
+                tick.getSymbol(), vwapAnalyzer.getVWAP(), tick.getLastTradedPrice());
+            return false;
+        }
+
+        // Condition 2: Volume indicates a breakout spike
+        boolean volumeSpike = volumeAnalyzer.isBreakoutWithSpike(tick);
+        if (!volumeSpike) {
+            logger.trace("isUpwardBreakout for {}: No volume spike.", tick.getSymbol());
+            return false;
+        }
+
+        // Condition 3: Price has just broken above a known resistance level
+        List<SupportResistanceLevel> levels = srAnalyzer.getLevels(tick.getSymbol());
+        if (levels.isEmpty()) {
+            logger.trace("isUpwardBreakout for {}: No S/R levels found.", tick.getSymbol());
+            return false;
+        }
+
+        boolean resistanceBroken = false;
+        double brokenResistanceLevel = 0;
+        for (SupportResistanceLevel level : levels) {
+            if (level.getType() == com.ibkr.models.LevelType.RESISTANCE) {
+                boolean conditionOpenBelow = tick.getOpenPrice() <= level.getLevelPrice();
+                boolean conditionLtpAbove = tick.getLastTradedPrice() > level.getLevelPrice();
+                boolean conditionNotTooFar = tick.getLastTradedPrice() <= (level.getLevelPrice() * 1.005);
+
+                if (conditionLtpAbove && conditionOpenBelow && conditionNotTooFar) {
+                    resistanceBroken = true;
+                    brokenResistanceLevel = level.getLevelPrice();
+                    logger.debug("isUpwardBreakout for {}: Resistance level {:.2f} broken. Open: {:.2f}, LTP: {:.2f}",
+                        tick.getSymbol(), brokenResistanceLevel, tick.getOpenPrice(), tick.getLastTradedPrice());
+                    break;
+                } else {
+                    logger.trace("isUpwardBreakout for {}: Resistance level {:.2f} not met for breakout. Open: {:.2f}, LTP: {:.2f}, LTP > R: {}, Open <= R: {}, LTP <= R*1.005: {}",
+                        tick.getSymbol(), level.getLevelPrice(), tick.getOpenPrice(), tick.getLastTradedPrice(), conditionLtpAbove, conditionOpenBelow, conditionNotTooFar);
+                }
+            }
+        }
+
+        if (!resistanceBroken) {
+            logger.trace("isUpwardBreakout for {}: No resistance level convincingly broken.", tick.getSymbol());
+            return false;
+        }
+
+        logger.info("Upward breakout conditions met for {}: Above VWAP, Volume Spike, Resistance Broken at ~{:.2f}",
+            tick.getSymbol(), brokenResistanceLevel);
+        return true;
     }
 
     private boolean isDownwardBreakdown(Tick tick) {
-        double movement = (tick.getLastTradedPrice() - tick.getOpenPrice()) / tick.getOpenPrice();
-        double currentVolatility = volatilityAnalyzer.getCurrentVolatility(tick);
-        double dynamicThreshold = breakdownThreshold * currentVolatility; // breakdownThreshold is negative
-        boolean isBreakdown = movement < dynamicThreshold;
-        logger.trace("isDownwardBreakdown for {}: Movement: {:.4f}, Volatility: {:.4f}, DynamicThreshold: {:.4f}. Result: {}",
-                tick.getSymbol(), movement, currentVolatility, dynamicThreshold, isBreakdown);
-        return isBreakdown;
+        if (tick == null || tick.getSymbol() == null) {
+            logger.warn("isDownwardBreakdown called with null tick or symbol.");
+            return false;
+        }
+
+        // Condition 1: Price is below VWAP
+        boolean belowVWAP = vwapAnalyzer.isBelowVWAP(tick);
+        if (!belowVWAP) {
+            logger.trace("isDownwardBreakdown for {}: Not below VWAP. VWAP: {:.2f}, LTP: {:.2f}",
+                tick.getSymbol(), vwapAnalyzer.getVWAP(), tick.getLastTradedPrice());
+            return false;
+        }
+
+        // Condition 2: Volume indicates a breakdown spike
+        boolean volumeSpike = volumeAnalyzer.isBreakdownWithSpike(tick);
+        if (!volumeSpike) {
+            logger.trace("isDownwardBreakdown for {}: No volume spike for breakdown.", tick.getSymbol());
+            return false;
+        }
+
+        // Condition 3: Price has just broken below a known support level
+        List<SupportResistanceLevel> levels = srAnalyzer.getLevels(tick.getSymbol());
+        if (levels.isEmpty()) {
+            logger.trace("isDownwardBreakdown for {}: No S/R levels found.", tick.getSymbol());
+            return false;
+        }
+
+        boolean supportBroken = false;
+        double brokenSupportLevel = 0;
+        for (SupportResistanceLevel level : levels) {
+            if (level.getType() == com.ibkr.models.LevelType.SUPPORT) {
+                boolean conditionOpenAbove = tick.getOpenPrice() >= level.getLevelPrice();
+                boolean conditionLtpBelow = tick.getLastTradedPrice() < level.getLevelPrice();
+                boolean conditionNotTooFar = tick.getLastTradedPrice() >= (level.getLevelPrice() * 0.995);
+
+                if (conditionLtpBelow && conditionOpenAbove && conditionNotTooFar) {
+                    supportBroken = true;
+                    brokenSupportLevel = level.getLevelPrice();
+                    logger.debug("isDownwardBreakdown for {}: Support level {:.2f} broken. Open: {:.2f}, LTP: {:.2f}",
+                        tick.getSymbol(), brokenSupportLevel, tick.getOpenPrice(), tick.getLastTradedPrice());
+                    break;
+                } else {
+                     logger.trace("isDownwardBreakdown for {}: Support level {:.2f} not met for breakdown. Open: {:.2f}, LTP: {:.2f}, LTP < S: {}, Open >= S: {}, LTP >= S*0.995: {}",
+                        tick.getSymbol(), level.getLevelPrice(), tick.getOpenPrice(), tick.getLastTradedPrice(), conditionLtpBelow, conditionOpenAbove, conditionNotTooFar);
+                }
+            }
+        }
+
+        if (!supportBroken) {
+            logger.trace("isDownwardBreakdown for {}: No support level convincingly broken.", tick.getSymbol());
+            return false;
+        }
+
+        logger.info("Downward breakdown conditions met for {}: Below VWAP, Volume Spike, Support Broken at ~{:.2f}",
+            tick.getSymbol(), brokenSupportLevel);
+        return true;
     }
 
     private TradingSignal handlePositionExit(Tick tick, TradingPosition position) {

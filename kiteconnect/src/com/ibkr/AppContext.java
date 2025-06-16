@@ -162,7 +162,11 @@ public class AppContext {
             this.marketSentimentAnalyzer, this.sectorStrengthAnalyzer, this.instrumentRegistry
         );
         this.breakoutSignalGenerator = new BreakoutSignalGenerator(
-            this.volatilityAnalyzer, this.vwapAnalyzer, this.volumeAnalyzer, this.sectorStrengthAnalyzer
+            this.volatilityAnalyzer,
+            this.vwapAnalyzer,
+            this.volumeAnalyzer,
+            this.sectorStrengthAnalyzer,
+            this.supportResistanceAnalyzer // Added supportResistanceAnalyzer
         );
         this.tickAggregator = new TickAggregator(this.instrumentRegistry);
 
