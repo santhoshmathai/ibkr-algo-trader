@@ -4,6 +4,7 @@ import com.ib.client.*;
 import com.ib.client.OrderState; // Added for openOrder
 import com.ib.client.Execution;
 import com.ibkr.AppContext; // Added
+import com.ibkr.alert.TradeAlertLogger; // Added Import
 import com.ibkr.IBOrderExecutor;
 import com.ibkr.data.InstrumentRegistry;
 import com.ibkr.data.MarketDataHandler;
@@ -333,6 +334,9 @@ public class IBClient implements EWrapper {
         } else {
             logger.warn("orderExecutor is null. Cannot handle execution details for ReqId: {}", reqId);
         }
+
+        // Log the trade execution to TradeAlerts.txt
+        TradeAlertLogger.logTradeExecution(execution, contract);
     }
 
     @Override
