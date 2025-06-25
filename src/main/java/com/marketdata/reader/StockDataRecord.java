@@ -138,6 +138,37 @@ public class StockDataRecord {
         return new HashMap<>(this.data);
     }
 
+    /**
+     * Calculates the gap percentage between the previous close and the current open.
+     * Gap % = (OPEN - PREV_CLOSE) / PREV_CLOSE * 100.
+     * @return The gap percentage, or null if PREV_CLOSE or OPEN is unavailable or PREV_CLOSE is zero.
+     */
+    public Double getGapPercentage() {
+        Double open = getDouble(OPEN);
+        Double prevClose = getDouble(PREV_CLOSE);
+
+        if (open == null || prevClose == null || prevClose == 0.0) {
+            return null;
+        }
+        return ((open - prevClose) / prevClose) * 100.0;
+    }
+
+    /**
+     * Calculates the initial move percentage from open to LTP (Last Traded Price).
+     * Initial Move % = (LTP - OPEN) / OPEN * 100.
+     * This serves as a proxy for intraday momentum using daily data.
+     * @return The initial move percentage, or null if LTP or OPEN is unavailable or OPEN is zero.
+     */
+    public Double getInitialMovePercentage() {
+        Double open = getDouble(OPEN);
+        Double ltp = getDouble(LTP);
+
+        if (open == null || ltp == null || open == 0.0) {
+            return null;
+        }
+        return ((ltp - open) / open) * 100.0;
+    }
+
     @Override
     public String toString() {
         return "StockDataRecord{" +
