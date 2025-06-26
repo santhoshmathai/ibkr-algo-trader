@@ -1,6 +1,6 @@
-package com.marketstrategy;
+package com.ibkr.marketstrategy;
 
-import com.marketdata.reader.StockDataRecord;
+import com.ibkr.marketdata.reader.StockDataRecord; // Adjusted import
 import java.util.List;
 import java.util.ArrayList; // Added for main method example
 

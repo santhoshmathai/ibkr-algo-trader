@@ -1,4 +1,4 @@
-package com.marketdata.reader;
+package com.ibkr.marketdata.reader;
 
 /**
  * Reads market data from CSV files specific to this project's format.

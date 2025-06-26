@@ -1,4 +1,4 @@
-package com.marketstrategy;
+package com.ibkr.marketstrategy;
 
 /**
  * Holds configuration parameters for the trading strategies and market analysis.
