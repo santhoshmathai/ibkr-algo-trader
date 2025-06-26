@@ -159,8 +159,15 @@ public class AppContext {
 
         // Level 1: Depend on Level 0
         this.tradingEngine = new TradingEngine(
-            this.vwapAnalyzer, this.volumeAnalyzer, this.circuitBreakerMonitor, this.darkPoolScanner,
-            this.marketSentimentAnalyzer, this.sectorStrengthAnalyzer, this.instrumentRegistry
+            this, // Pass AppContext itself
+            this.vwapAnalyzer,
+            this.volumeAnalyzer,
+            this.circuitBreakerMonitor,
+            this.darkPoolScanner,
+            this.marketSentimentAnalyzer,
+            this.sectorStrengthAnalyzer,
+            this.instrumentRegistry,
+            this.tickAggregator // Pass TickAggregator
         );
         this.breakoutSignalGenerator = new BreakoutSignalGenerator(
             this.volatilityAnalyzer,

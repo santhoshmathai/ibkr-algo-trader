@@ -59,7 +59,8 @@ public class OrbStrategy {
         logger.info("OrbStrategy initialized with parameters. Market Timezone: {}", marketTimeZoneId);
     }
 
-    private OrbStrategyState getState(String symbol) {
+    // Public getter for state, used by TradingEngine
+    public OrbStrategyState getState(String symbol) {
         return stateBySymbol.computeIfAbsent(symbol, s -> {
             logger.info("Creating new OrbStrategyState for symbol: {}", s);
             return new OrbStrategyState(s);
@@ -207,6 +208,11 @@ public class OrbStrategy {
             logger.debug("Potential Breakout for {}: Close {} > ORB High {}", symbol, bar.getClose(), state.orbHigh);
 
             // Volume Spike Filter
+            if (volumeData.averageVolumeLastN <= 0) {
+                logger.warn("Breakout REJECTED for {}: Average volume for lookback is zero or invalid ({}). Cannot reliably determine volume spike.",
+                            symbol, volumeData.averageVolumeLastN);
+                return null;
+            }
             boolean volumeSpike = volumeData.currentCandleVolume > (params.getVolumeSpikeMultiplier() * volumeData.averageVolumeLastN);
             if (!volumeSpike) {
                 logger.info("Breakout REJECTED for {}: Volume spike condition failed. CurrentVol={}, AvgVol={}, Multiplier={}",

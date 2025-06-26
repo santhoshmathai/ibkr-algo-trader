@@ -5,10 +5,16 @@ import com.ibkr.analysis.SectorStrengthAnalyzer;
 import com.ibkr.indicators.*;
 import com.ibkr.safeguards.*;
 import com.ibkr.liquidity.*;
-import com.ibkr.data.InstrumentRegistry; // Added import
+import com.ibkr.data.InstrumentRegistry;
+import com.ibkr.data.TickAggregator; // +OrbStrategy
+import com.ibkr.strategy.orb.OrbStrategy; // +OrbStrategy
+import com.ibkr.strategy.common.OrbStrategyParameters; // +OrbStrategy
+import com.ibkr.AppContext; // +OrbStrategy
 import com.zerodhatech.models.Tick;
+import com.zerodhatech.models.OHLC; // +OrbStrategy
 import com.ibkr.models.TradingSignal;
 import com.ibkr.models.TradingPosition;
+import com.ibkr.models.PreviousDayData; // +OrbStrategy
 import com.ibkr.models.TradeAction;
 import com.ibkr.models.OpeningMarketTrend; // New import
 import org.slf4j.Logger; // Added
@@ -28,24 +34,185 @@ public class TradingEngine {
     private final DarkPoolScanner darkPoolScanner;
     private final MarketSentimentAnalyzer marketSentimentAnalyzer;
     private final SectorStrengthAnalyzer sectorStrengthAnalyzer;
-    private final InstrumentRegistry instrumentRegistry; // Added
+    private final InstrumentRegistry instrumentRegistry;
+    private final AppContext appContext; // +OrbStrategy
+    private final TickAggregator tickAggregator; // +OrbStrategy
+    private final OrbStrategyParameters orbStrategyParameters; // +OrbStrategy
+    private final OrbStrategy orbStrategy; // +OrbStrategy
 
-    public TradingEngine(VWAPAnalyzer vwapAnalyzer, VolumeAnalyzer volumeAnalyzer,
+    // Data structures for ORB Strategy support
+    private final Map<String, List<OHLC>> oneMinuteBarsHistory = new ConcurrentHashMap<>(); // +OrbStrategy
+    private final Map<String, PreviousDayData> dailyPdhCache = new ConcurrentHashMap<>(); // +OrbStrategy
+
+
+    public TradingEngine(AppContext appContext, VWAPAnalyzer vwapAnalyzer, VolumeAnalyzer volumeAnalyzer,
                          CircuitBreakerMonitor circuitBreakerMonitor, DarkPoolScanner darkPoolScanner,
                          MarketSentimentAnalyzer marketSentimentAnalyzer, SectorStrengthAnalyzer sectorStrengthAnalyzer,
-                         InstrumentRegistry instrumentRegistry) {
+                         InstrumentRegistry instrumentRegistry, TickAggregator tickAggregator) {
+        this.appContext = appContext;
         this.vwapAnalyzer = vwapAnalyzer;
         this.volumeAnalyzer = volumeAnalyzer;
         this.circuitBreakerMonitor = circuitBreakerMonitor;
         this.darkPoolScanner = darkPoolScanner;
         this.marketSentimentAnalyzer = marketSentimentAnalyzer;
         this.sectorStrengthAnalyzer = sectorStrengthAnalyzer;
-        this.instrumentRegistry = instrumentRegistry; // Added
+        this.instrumentRegistry = instrumentRegistry;
+        this.tickAggregator = tickAggregator;
+
+        // Initialize ORB Strategy components
+        this.orbStrategyParameters = new OrbStrategyParameters(); // Using default parameters for now
+        this.orbStrategy = new OrbStrategy(this.appContext, this.instrumentRegistry, this.orbStrategyParameters, "America/New_York"); // Assuming ET for IBKR
+        logger.info("TradingEngine initialized, including OrbStrategy.");
+    }
+
+    /**
+     * Initializes strategies for a given symbol at the start of a trading day.
+     * This includes resetting daily state for strategies like ORB and caching necessary daily data.
+     * @param symbol The stock symbol to initialize.
+     * @param pdhData The PreviousDayData for the symbol.
+     */
+    public void initializeStrategyForSymbol(String symbol, PreviousDayData pdhData) {
+        if (symbol == null || symbol.isEmpty() || pdhData == null) {
+            logger.warn("Cannot initialize strategy for symbol: {} with pdhData: {}. Invalid input.", symbol, pdhData);
+            return;
+        }
+
+        // Cache PDH
+        dailyPdhCache.put(symbol, pdhData);
+        logger.info("Cached PDH for {}: {}", symbol, pdhData.getPreviousHigh());
+
+        // Reset ORB strategy daily state and set PDH
+        if (orbStrategy != null) {
+            orbStrategy.resetDailyState(symbol);
+            orbStrategy.setPreviousDayHigh(symbol, pdhData.getPreviousHigh());
+            logger.info("ORB Strategy daily state reset and PDH set for symbol: {}", symbol);
+        }
+
+        // Reset other strategy states here if needed
+        // e.g., clear oneMinuteBarsHistory for the symbol if it's not automatically managed by size
+        List<OHLC> history = oneMinuteBarsHistory.get(symbol);
+        if (history != null) {
+            history.clear(); // Clears history for the new day
+            logger.debug("Cleared 1-minute bar history for {}", symbol);
+        }
+
+        logger.info("Daily strategy initialization complete for symbol: {}", symbol);
+    }
+
+    // Helper method to calculate average volume from the stored 1-minute bar history
+    private double calculateAverageVolume(String symbol, int lookbackPeriods) {
+        List<OHLC> history = oneMinuteBarsHistory.get(symbol);
+        if (history == null || history.isEmpty() || lookbackPeriods <= 0) {
+            logger.warn("Cannot calculate average volume for {}: No history or invalid lookback {}.", symbol, lookbackPeriods);
+            return 0.0; // Or a default high volume to prevent accidental triggers if avg is 0
+        }
+
+        int actualLookback = Math.min(lookbackPeriods, history.size());
+        // Calculate average from the most recent 'actualLookback' bars, excluding the current forming bar
+        // Assumes 'history' contains bars *before* the current one being processed by onOneMinuteBarClose
+
+        double sumVolume = 0;
+        // Iterate from end of list backwards
+        for (int i = 0; i < actualLookback; i++) {
+            if (history.size() - 1 - i >= 0) { // Ensure we don't go out of bounds if history is short
+                 sumVolume += history.get(history.size() - 1 - i).getVolume();
+            } else {
+                break; // Not enough history for full lookback
+            }
+        }
+
+        if (actualLookback == 0) return 0.0; // Should be caught by history.isEmpty() but as safeguard
+        double avgVol = sumVolume / actualLookback;
+        logger.debug("Calculated avg volume for {}: Lookback={}, ActualLookback={}, SumVol={}, AvgVol={}",
+            symbol, lookbackPeriods, actualLookback, sumVolume, avgVol);
+        return avgVol;
+    }
+
+
+    /**
+     * Processes a newly closed 1-minute bar for a symbol to generate ORB strategy signals.
+     * @param symbol The stock symbol.
+     * @param newBar The newly closed 1-minute OHLC bar.
+     * @param barTimestamp The epoch millisecond starting timestamp of this newBar.
+     * @param latestTickForDepth The latest available Tick object for this symbol (to get depth).
+     * @return TradingSignal from ORB strategy, or null if no signal.
+     */
+    public TradingSignal onOneMinuteBarClose(String symbol, OHLC newBar, long barTimestamp, Tick latestTickForDepth) {
+        if (symbol == null || newBar == null || latestTickForDepth == null) {
+            logger.warn("Invalid arguments for onOneMinuteBarClose for symbol: {}", symbol);
+            return null;
+        }
+
+        logger.debug("Processing 1-min bar for {}: O={}, H={}, L={}, C={}, V={}, Time={}",
+                symbol, newBar.getOpen(), newBar.getHigh(), newBar.getLow(), newBar.getClose(), newBar.getVolume(), barTimestamp);
+
+        // Retrieve PDH from cache
+        PreviousDayData pdhData = dailyPdhCache.get(symbol);
+        if (pdhData == null) {
+            logger.warn("PDH data not found in cache for symbol: {}. ORB strategy may not run correctly.", symbol);
+            // Depending on OrbStrategy's internal handling of missing PDH, this might be problematic.
+            // OrbStrategy.setPreviousDayHigh should have been called during daily init.
+            // If we absolutely need it here and it's missing, could try to fetch from appContext,
+            // but it's better if it's pre-loaded.
+            // For now, OrbStrategy has its own pdhFetched check.
+        }
+        // double previousDayHigh = (pdhData != null) ? pdhData.getPreviousHigh() : 0.0; // OrbStrategy handles its own PDH state
+
+        // Prepare VolumeData
+        // Note: calculateAverageVolume needs history *before* adding the newBar.
+        // So, we calculate based on current history, then add newBar.
+        double averageLastNVols = calculateAverageVolume(symbol, orbStrategyParameters.getVolumeAverageLookbackCandles());
+        OrbStrategy.VolumeData volumeData = new OrbStrategy.VolumeData(newBar.getVolume(), averageLastNVols);
+
+        // Update history *after* calculating average for the current bar's context
+        List<OHLC> history = oneMinuteBarsHistory.computeIfAbsent(symbol, k -> new ArrayList<>());
+        history.add(newBar); // Add current bar to history
+        // Optional: Trim history if it grows too large, e.g., keep last X bars
+        int maxHistorySize = Math.max(20, orbStrategyParameters.getVolumeAverageLookbackCandles() + 5); // Keep a bit more than lookback
+        while (history.size() > maxHistorySize) {
+            history.remove(0);
+        }
+
+        // Extract Market Depth
+        List<Depth> bidDepth = new ArrayList<>();
+        List<Depth> askDepth = new ArrayList<>();
+        if (latestTickForDepth.getMarketDepth() != null) {
+            bidDepth = latestTickForDepth.getMarketDepth().getOrDefault("buy", new ArrayList<>());
+            askDepth = latestTickForDepth.getMarketDepth().getOrDefault("sell", new ArrayList<>());
+        } else {
+            logger.warn("Market depth is null in latestTickForDepth for symbol: {}", symbol);
+        }
+
+        // Call OrbStrategy
+        if (orbStrategy != null) {
+            TradingSignal orbSignal = orbStrategy.processBar(symbol, newBar, barTimestamp, bidDepth, askDepth, volumeData);
+            if (orbSignal != null && orbSignal.getAction() != TradeAction.HOLD) {
+                logger.info("TradingEngine: ORB Strategy generated signal for {}: {}", symbol, orbSignal);
+                return orbSignal;
+            }
+        }
+        return null;
     }
 
     public TradingSignal generateSignal(Tick tick, TradingPosition position) {
         logger.debug("Generating signal for symbol: {}, tick: {}, position: {}", tick.getSymbol(), tick, position);
-        // Update all analyzers
+
+        // Check ORB strategy state first
+        if (orbStrategy != null) {
+            OrbStrategyState orbState = orbStrategy.getState(tick.getSymbol()); // Assumes OrbStrategy has a public getState or similar
+            if (orbState.tradeTakenToday) {
+                logger.info("ORB trade already taken for {} today. Tick-based strategy will not generate new entry signals.", tick.getSymbol());
+                // Still allow tick-based logic to manage exits if position was taken by ORB
+                // and if the existing exit logic is compatible.
+                // For now, if ORB trade is done, we only check for exits from existing positions.
+                if (shouldExitPosition(tick, position)) { // position here would be the one from ORB
+                    return buildExitSignal(tick, position);
+                }
+                return TradingSignal.hold(); // No new entries from tick-strategy
+            }
+        }
+
+        // Update tick-based analyzers
         updateAnalyzers(tick);
 
         // Safeguard checks
