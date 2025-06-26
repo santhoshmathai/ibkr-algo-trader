@@ -1,406 +1,133 @@
 <a href="https://zerodha.tech"><img src="https://zerodha.tech/static/images/github-badge.svg" align="right" /></a>
-# The Kite Connect 3.4.0 API Java client
-The official Java client for communicating with [Kite Connect API](https://kite.trade).
+# Detailed logic for each class:
 
-Kite Connect is a set of REST-like APIs that expose many capabilities required to build a complete investment and trading platform. Execute orders in real time, manage user portfolio, stream live market data (WebSockets), and more, with the simple HTTP API collection.
+##  BreakoutSignalGenerator.java
 
-[Zerodha Technology Pvt Ltd](http://rainmatter.com) (c) 2019. Licensed under the MIT License.
+**Logic**: It generates BUY/SELL signals when price breaks support/resistance, confirmed by VWAP and volume. For BUYs, price must break above resistance, be above VWAP, and have a volume spike. For SELLs (shorts), price must break below support, be below VWAP, and have a volume spike. An alternative short signal also checks for sector weakness.
 
-## Documentation
-- [Kite Connect HTTP API documentation](https://kite.trade/docs/connect/v3/)
-- [Java library documentation](https://kite.trade/docs/javakiteconnect/)
+**Integration**: It relies on VWAPAnalyzer, VolumeAnalyzer, SectorStrengthAnalyzer, and SupportResistanceAnalyzer to get the necessary data for its decisions.
 
-## Usage
-- [Download Kite Connect 3 jar file](https://github.com/zerodhatech/javakiteconnect/tree/master/dist) and include it in your build path.
+**Handling Existing Positions**: If a TradingPosition object indicates an active trade (currentPosition.isInPosition() is true), it switches to exit logic. Exits (profit taking or stop-loss) are determined by volatility-based price targets calculated using the volatilityAtEntry stored in the TradingPosition.
 
-- Include com.zerodhatech.kiteconnect into build path from maven. Use version 3.4.0
+**Risk Management:** Risk is managed through:
 
-- To use javakiteconnect in **Android**, you need to include jar file in the libs directory and add the following line in you module's gradle file ``` compile files('libs/kiteconnect.jar') ```
-
-## API usage
-```java
-// Initialize Kiteconnect using apiKey.
-KiteConnect kiteSdk = new KiteConnect("your_apiKey");
-
-// Set userId.
-kiteSdk.setUserId("your_userId");
-
-/* First you should get request_token, public_token using kitconnect login and then use request_token, public_token, api_secret to make any kiteconnect api call.
-Get login url. Use this url in webview to login user, after authenticating user you will get requestToken. Use the same to get accessToken. */
-String url = kiteSdk.getLoginUrl();
-
-// Get accessToken as follows,
-User user =  kiteSdk.generateSession("request_token", "your_apiSecret");
-
-// Set request token and public token which are obtained from login process.
-kiteSdk.setAccessToken(userModel.accessToken);
-kiteSdk.setPublicToken(userModel.publicToken);
-
-// Set session expiry callback.
-kiteSdk.setSessionExpiryHook(new SessionExpiryHook() {
-    @Override
-    public void sessionExpired() {
-        System.out.println("session expired");                    
-    }
-});
-
-// Get margins returns margin model, you can pass equity or commodity as arguments to get margins of respective segments.
-Margin margins = kiteSdk.getMargins("equity");
-System.out.println(margins.available.cash);
-System.out.println(margins.utilised.debits);
-
-/** Place order method requires a orderParams argument which contains,
-   * tradingsymbol, exchange, transaction_type, order_type, quantity, product, price, trigger_price, disclosed_quantity, validity
-   * squareoff_value, stoploss_value, trailing_stoploss
-   * and variety (value can be regular, bo, co, amo)
-   * place order will return order model which will have only orderId in the order model
-   * Following is an example param for LIMIT order,
-   * if a call fails then KiteException will have error message in it
-   * Success of this call implies only order has been placed successfully, not order execution. */
-
-   OrderParams orderParams = new OrderParams();
-   orderParams.quantity = 1;
-   orderParams.orderType = Constants.ORDER_TYPE_LIMIT;
-   orderParams.tradingsymbol = "ASHOKLEY";
-   orderParams.product = Constants.PRODUCT_CNC;
-   orderParams.exchange = Constants.EXCHANGE_NSE;
-   orderParams.transactionType = Constants.TRANSACTION_TYPE_BUY;
-   orderParams.validity = Constants.VALIDITY_DAY;
-   orderParams.price = 122.2;
-   orderParams.triggerPrice = 0.0;
-   orderParams.tag = "myTag"; //tag is optional and it cannot be more than 8 characters and only alphanumeric is allowed
-
-   Order order = kiteConnect.placeOrder(orderParams, Constants.VARIETY_REGULAR);
-   System.out.println(order.orderId);
-```
-For more details, take a look at Examples.java in sample directory.
-
-## WebSocket live streaming data
-```java
- /** To get live price use websocket connection.
-         * It is recommended to use only one websocket connection at any point of time and make sure you stop connection, once user goes out of app.
-         * custom url points to new endpoint which can be used till complete Kite Connect 3 migration is done. */
-        KiteTicker tickerProvider = new KiteTicker(kiteConnect.getAccessToken(), kiteConnect.getApiKey());
-
-        tickerProvider.setOnConnectedListener(new OnConnect() {
-            @Override
-            public void onConnected() {
-                /** Subscribe ticks for token.
-                 * By default, all tokens are subscribed for modeQuote.
-                 * */
-                tickerProvider.subscribe(tokens);
-                tickerProvider.setMode(tokens, KiteTicker.modeFull);
-            }
-        });
-
-        tickerProvider.setOnDisconnectedListener(new OnDisconnect() {
-            @Override
-            public void onDisconnected() {
-                // your code goes here
-            }
-        });
-
-        /** Set listener to get order updates.*/
-        tickerProvider.setOnOrderUpdateListener(new OnOrderUpdate() {
-            @Override
-            public void onOrderUpdate(Order order) {
-                System.out.println("order update "+order.orderId);
-            }
-        });
-
-        tickerProvider.setOnTickerArrivalListener(new OnTicks() {
-            @Override
-            public void onTicks(ArrayList<Tick> ticks) {
-                NumberFormat formatter = new DecimalFormat();
-                System.out.println("ticks size "+ticks.size());
-                if(ticks.size() > 0) {
-                    System.out.println("last price "+ticks.get(0).getLastTradedPrice());
-                    System.out.println("open interest "+formatter.format(ticks.get(0).getOi()));
-                    System.out.println("day high OI "+formatter.format(ticks.get(0).getOpenInterestDayHigh()));
-                    System.out.println("day low OI "+formatter.format(ticks.get(0).getOpenInterestDayLow()));
-                    System.out.println("change "+formatter.format(ticks.get(0).getChange()));
-                    System.out.println("tick timestamp "+ticks.get(0).getTickTimestamp());
-                    System.out.println("tick timestamp date "+ticks.get(0).getTickTimestamp());
-                    System.out.println("last traded time "+ticks.get(0).getLastTradedTime());
-                    System.out.println(ticks.get(0).getMarketDepth().get("buy").size());
-                }
-            }
-        });
-
-        tickerProvider.setTryReconnection(true);
-        //maximum retries and should be greater than 0
-        tickerProvider.setMaximumRetries(10);
-        //set maximum retry interval in seconds
-        tickerProvider.setMaximumRetryInterval(30);
-
-        /** connects to com.zerodhatech.com.zerodhatech.ticker server for getting live quotes*/
-        tickerProvider.connect();
-
-        /** You can check, if websocket connection is open or not using the following method.*/
-        boolean isConnected = tickerProvider.isConnectionOpen();
-        System.out.println(isConnected);
-
-        /** set mode is used to set mode in which you need tick for list of tokens.
-         * Ticker allows three modes, modeFull, modeQuote, modeLTP.
-         * For getting only last traded price, use modeLTP
-         * For getting last traded price, last traded quantity, average price, volume traded today, total sell quantity and total buy quantity, open, high, low, close, change, use modeQuote
-         * For getting all data with depth, use modeFull*/
-        tickerProvider.setMode(tokens, KiteTicker.modeLTP);
-
-        // Unsubscribe for a token.
-        tickerProvider.unsubscribe(tokens);
-
-        // After using com.zerodhatech.com.zerodhatech.ticker, close websocket connection.
-        tickerProvider.disconnect();
-
-```
-For more details about the different mode of quotes and subscribing for them, take a look at Examples in sample directory.
-
- ## Breaking changes from 3.2.1 to 3.3.1
-
- #### Margin calculation data
-
- | version 3.3.1 | version 3.2.1 |
- | :---: | :---:|
- | option_premium(double) | optionPremium(double) |
-
- ## Breaking changes from 3.1.14 to 3.2.1
-
- #### Holding (model)
-    
- | version 3.1.14 | version 3.2.1 |
- | :---: | :---:|
- | lastPrice(String) | lastPrice(Double) |
- | t1Quantity(String) | t1Quantity(int) |
- | pnl(String) | pnl(Double) |
- | quantity(String) | quantity(int) |
- | averagePrice(String) | averagePrice(Double) |
-
- * Removed:
-
- | version 3.1.14 | version 3.2.1 |
- | :---: | :---: |
- | accountId | **NA** |
-
- ##### Tick (model)
-
- | version 3.1.14 | version 3.2.1 |
- | :---: | :---:|
- | volumeTradedToday(double) | volumeTradedToday(long) |
-
- * Change attribute for indices tick will have change percent value against
- the previously sent absolute change value.
- 
- #### Order (model)
- 
- * Removed:
-
- | version 3.1.14 | version 3.2.1 |
- | :---: | :---: |
- | userId | **NA** |
- | symbol | **NA** |
+1. Requiring multiple confirmations (price, S/R, VWAP, volume) before entry.
+2. Using volatility-adjusted stop-losses for exits.
+3. Calculating position size to limit potential loss on a single trade to a predefined capital percentage (e.g., 1% of $10k).
 
 
+### VWAPAnalyzer
+Calculates the Volume Weighted Average Price. BreakoutSignalGenerator uses it to confirm if the price is above VWAP (for buys) or below VWAP (for shorts), ensuring the trade aligns with short-term momentum.
 
- ## Breaking changes from version 2 to version 3
+**VWAPAnalyzer Detailed Logic:**
+Core Function: Calculates VWAP over a rolling 50-tick window.
 
- #### Place order (bracket order) parameters
+update(Tick tick):
 
-| version 2 | version 3 |
-| :---: | :---:|
-| squareoff_value | squareoff |
-| stoploss_value | stoploss |
+1. Calculates Typical Price for the tick: (High + Low + LTP) / 3.
+2. Uses tick.getVolumeTradedToday() as the volume for the tick. Note: This is cumulative daily volume. If interval volume is desired for a classic intraday VWAP, this is a key point.
+3. Adds the tick to the window. Updates cumulativeVolume and cumulativeValue (sum of TypicalPrice * Volume).
+4. If window exceeds 50 ticks, removes the oldest tick and subtracts its contribution from cumulativeVolume and cumulativeValue.
 
- #### Model name changes
- 
- | version 2 | version 3 |
- | :---: | :---:|
- | MfHolding | MFHolding |
- | MfInstrument | MFInstrument |
- | MfOrder | MFOrder |
- | MfSip | MFSIP |
+**getVWAP()**: Returns cumulativeValue / cumulativeVolume.
 
- ##### Order (model)
- 
- * The orderTimestamp is now Date type.
- * The exchangeTimestamp is now Date type.
- 
- #### Trades (model)
- 
- * The orderTimestamp is now fillTimestamp.
- * The exchangeTimestamp is now Date type.
- 
- #### MFOrder (model)
+**getVolatility():** Calculates the standard deviation of typical prices in the window around the current VWAP.
 
- * The orderTimestamp is now Date type.
- * The exchangeTimestamp is now Date type. 
- 
- #### MFSIP (model)
- 
- * The created is now Date type.
- * The Date is now Date type.
- 
- #### MFInstrument (model)
- 
- * The purchase_allowed is now boolean type.
- * The redemption_allowed is now boolean type.
- * The last_price_date is now Date type.
- 
- #### Instrument (model)
- 
- * The expiry is now Date type.
+**isAboveVWAP(Tick tick) / isBelowVWAP(Tick tick):** Checks if LTP is >0.5% above or <0.5% below VWAP, respectively. This 0.5% acts as a buffer.
 
- #### Package name changes
- 
- | version 2 | version 3 |
- | :---: | :---: |
- |com.rainmatter.kitehttp|com.zerodhatech.kiteconnect.kitehttp|
- |com.rainmatter.utils|com.zerodhatech.kiteconnect.utils|
- |com.rainmatter.kiteconnect|com.zerodhatech.kiteconnect|
- |com.rainmatter.ticker|com.zerodhatech.kiteconnect|
- |com.rainmatter.models|com.zerodhatech.models|
- 
- #### Method name changes
- 
- | version 2 | version 3 |
- | :---: | :---: |
- | requestAccessToken | generateSession |
- | modifyProduct | convertPosition |
- | getOrder | getOrderHistory |
- | getTrades(order_id) | getOrderTrades(order_id) |
- | getMfOrders | getMFOrders |
- | getMfOrder | getMFOrder |
- | getMfSips | getMFSIPs |
- | getMfSip | getMFSIP |
- | modifySip | modifySIP |
- | cancelSip | cancelSIP |
- | getMfInstruments | getMFInstruments |
- 
- #### Method with signature change
- 
- | version 2 |
- | :---: |
- | placeOrder |
- | modifyOrder |
- | cancelOrder |
- | convertPosition |
- | getTriggerRange |
- | getHistoricalData |
- | placeMFOrder |
- | placeMFSIP |
- | modifyMFSIP |
- 
- For more details about each method go to [KiteConnect.java](https://github.com/zerodhatech/javakiteconnect/blob/kite3/kiteconnect/src/com/zerodhatech/kiteconnect/KiteConnect.java)
- 
- #### Funds (model)
- 
- | version 2 | version 3 |
- | :---: | :---: |
- | Margins | Margin |
-  
- #### User (model)
- 
- * UserModel is now User.
- 
-  | version 2 | version 3 |
-  | :---: | :---: |
-  | product | products |
-  | exchange | exchanges |
-  | orderType | orderTypes |
-  | passwordReset | **NA** |
-  | memberId | **NA** |
-  | **NA** | apiKey |
-  
- * loginTime is now of Date type.
-  
- #### Position (model)
- 
- Added new fields 
- 
-  | version 3 |
-  | :---: |
-  | dayBuyQuantity |
-  | daySellQuantity |
-  | dayBuyPrice |  
-  | daySellPrice |
-  | dayBuyValue |
-  | daySellValue |
-  | value |
-  
-  #### Kite Ticker (Websockets)
-  
-  * Kite Ticker is now authenticated using access_token and not public_token.
-  
-  Version 2: 
-  ```java
-  KiteConnect kiteSdk = new KiteConnect("your_apiKey");
-  ```
-  Version 3:
-  ```java
-  KiteTicker tickerProvider = new KiteTicker(kiteConnect.getUserId(), kiteConnect.getAccessToken(), kiteConnect.getApiKey());
-  ```  
-  * Order postbacks are now streamed on Kite Ticker.
-   
-  * Added new fields in full mode.
-  
-  | version 3 |
-  | :---: |
-  | lastTradedTime |
-  | openInterest |
-  | oiDayHigh |
-  | oiDayLow |
-  | tickTimestamp |
-  
-  * Changes:
-  
-  | version 2 | version 3 |
-  | :---: | :---: |
-  | OnTick | OnTicks |
-  | setTimeIntervalForReconnection | **NA** |
-  | **NA** | setMaximumRetryInterval |
-  | netPriceChangeFromClosingPrice | change |
-  
-  #### Quote 
-  
-  * Quote will accept multiple params and returns a map of Quote model.
-  * Added new fields open interest, tick timestamp, last traded time, average price, day high OI, day low OI.
-  * lastTradedPrice is now lastPrice.
-  
-  | version 3 |
-  | :---: |
-  | instrumentToken |
-  | timestamp |
-  | averagePrice |
-  | oiDayHigh |
-  | oiDayLow |
-  
-  * Changes:
-  
-  | version 2 | version 3 |
-  | :---: | :---: |
-  | lastTime(String) | lastTradedTime(Date) |
-  | changePercent | **NA** |
-  | depth(Map<String, ArrayList<Depth>>) | depth(MarketDepth type) |
-  
-  
-  * Removed: 
-   
-  | version 2 | version 3 |
-  | :---: | :---: |
-  | IndicesQuote | **NA** |
-  
-  #### Profile
-  
-  * Added new profile API call to fetch user details.
-  
-  #### Trigger range
-  
-  * Trigger range API supports fetching trigger range for multiple instruments in one request.
-  
-  #### TriggerRange (model)
-  
-  | version 2 | version 3 |
-  | :---: | :---: |
-  | start | lower |
-  | end | upper |
-  | percent | percentage |
+**getDistanceToVWAP(Tick tick):** Returns the percentage difference between LTP and VWAP.
+
+**Key Considerations for Fine-Tuning:**
+
+* VWAP Window Size (50): Adjust based on desired sensitivity.
+* Volume Data (tick.getVolumeTradedToday()): Understand its impact. Using cumulative daily volume means later ticks (with higher volume numbers) can have a larger effect if earlier ticks are still in the window. The fixed window helps normalize this over time.
+* VWAP Buffer (0.5%): Evaluate if this fixed percentage is suitable across all price ranges or if an adaptive buffer (e.g., ATR-based) would be better.
+
+### VolumeAnalyzer
+Detects if the current trade volume represents a spike compared to recent average volume. BreakoutSignalGenerator requires this volume spike to confirm the strength and validity of a breakout/breakdown, filtering out moves on low conviction.
+
+**VolumeAnalyzer Detailed Logic:**
+
+**Core Function:** Detects if the current tick's trading volume constitutes a significant spike compared to recent average volume.
+
+**update(Tick tick):**
+
+1. Uses tick.getLastTradedQuantity() as the volume for the current tick (this is the volume of the last trade or within the tick's interval).
+2. Ignores ticks with zero or negative lastTradedQuantity.
+3. Adds this lastTradedQuantity to a rolling window of 20 volume readings.
+4. Maintains a rollingSum of volumes in the window. If the window size is exceeded, the oldest volume is removed and subtracted from rollingSum.
+
+**isBreakoutWithSpike(Tick tick) / isBreakdownWithSpike(Tick tick):**
+
+1. Calculate avgVolume (simple moving average of volumes in the 20-period window).
+2. A volume spike is defined as tick.getLastTradedQuantity() > avgVolume * 2.5.
+3. The logic is identical for both methods; the context of breakout or breakdown is determined by the calling code (BreakoutSignalGenerator) based on price action, not by different volume calculations here.
+
+**Key Considerations for Fine-Tuning:**
+
+* **Volume Window Size (20):** Adjust for desired sensitivity of the average volume.
+* **Spike Multiplier (2.5):** This is a key parameter. Lower for more signals, higher for fewer, stronger signals. Test and optimize.
+* **Source of Volume (getLastTradedQuantity()):** This is good for immediate spike detection. Contrast with VWAPAnalyzer's use of getVolumeTradedToday().
+* **Uniform Spike Definition:** The 2.5x threshold is the same for upside and downside moves. Consider if directional sensitivity is needed.
+
+### SectorStrengthAnalyzer.java
+
+Calculates the average performance of stocks within predefined sectors. BreakoutSignalGenerator uses its isUnderperforming method in generateShortSignal to check if the stock's sector is weak compared to a benchmark, adding a layer of confirmation for short trades.
+
+#### SectorStrengthAnalyzer Detailed Logic:
+**Core Function:** Calculates and compares the performance of different market sectors.
+
+**Initialization:** Requires two maps:
+
+1. sectorToStocks: Defines which stocks belong to which sector.
+2. symbolToSector: Maps individual stock symbols to their sector.
+
+**updateSectorPerformance(String symbol, double priceChange):**
+
+1. Identifies the sector for the given symbol.
+2. Updates the sector's performance in sectorReturns using: newReturn = (oldSectorReturn + stockPriceChange) / 2.0. This is a simple rolling average.
+3. **Crucial:** The nature of priceChange (absolute, percentage, period of change) greatly influences what sectorReturns represents.
+
+**getTopSectors(int count) / getBottomSectors(int count):** Ranks sectors by the values in sectorReturns.
+
+**isOutperforming(Tick tick, String benchmarkSector) / isUnderperforming(Tick tick, String benchmarkSector):**
+
+1. Compares the performance of the stock's sector to a benchmarkSector.
+2. Returns true if the stock's sector return is >0.5% better (outperforming) or <0.5% worse (underperforming) than the benchmark.
+
+**Key Considerations for Fine-Tuning:**
+
+* **Nature of priceChange input:** Is it absolute, percentage? What period does it cover? This is fundamental.
+* **Averaging Method:** The (old + new) / 2 method is simple. Consider if weighting by market cap or a different smoothing technique is needed.
+* **Benchmark Choice:** The relevance of the benchmarkSector is key for comparison.
+* **Performance Threshold (0.5%):** May need adjustment based on market conditions or desired sensitivity.
+
+### SupportResistanceAnalyzer.java
+
+Identifies support and resistance levels, primarily using the previous day's high and low. BreakoutSignalGenerator relies heavily on this to define the actual price levels that need to be broken for a breakout or breakdown signal to be generated. It's the core of the 'breakout' premise.
+
+#### SupportResistanceAnalyzer Detailed Logic:
+
+**Core Function:** Identifies and stores support and resistance (S/R) levels for stocks, primarily based on previous day's data.
+
+**Initialization:** Requires an AppContext to fetch PreviousDayData.
+
+**calculateDailyLevels(String symbol):**
+
+1. Fetches PreviousDayData (previous high, low, close) for the symbol via AppContext.
+2. Clears any existing S/R levels for that symbol before adding new daily ones.
+3. If pdData.getPreviousHigh() is valid, it's added as a RESISTANCE level with LevelStrength.MODERATE and method "DailyHighLow".
+4. If pdData.getPreviousLow() is valid, it's added as a SUPPORT level with LevelStrength.MODERATE and method "DailyHighLow".
+5. Logic for using previous day's close is present but commented out.
+
+**getLevels(String symbol):** Returns the list of stored SupportResistanceLevel objects for the symbol.
+
+**clearLevels(String symbol) / clearAllLevels():** Utility methods to remove S/R levels.
+
+**Key Considerations for Fine-Tuning:**
+
+* Source of S/R Levels: Currently limited to Previous Day High/Low. Consider adding other types: Pivot Points, Fibonacci levels, moving averages, historical swing points, round numbers.
+* LevelStrength: Currently assigned as MODERATE. More advanced logic could vary strength based on number of touches, volume at level, etc. BreakoutSignalGenerator doesn't currently use this strength in its logic.
+* Static Levels: These are static for the day. Dynamic S/R levels (like intraday pivots or MAs) would require different update mechanisms.
+* Data Dependency: Relies on accurate PreviousDayData from AppContext.
+* Clearing Strategy: The current clear() in calculateDailyLevels is absolute for the symbol. If mixing S/R calculation methods, a more targeted clear might be needed.
