@@ -283,8 +283,8 @@ public class OrbStrategy {
                         .action(TradeAction.BUY)
                         .price(bar.getClose()) // Entry at the close of the retest candle
                         .quantity(quantity)
-                        .strategyName("ORB_15Min_Retest")
-                        .triggeredAt(System.currentTimeMillis()) // Add timestamp
+                        .strategyId("ORB_15Min_Retest") // Corrected method name
+                        // Timestamp is not part of com.ibkr.models.TradingSignal
                         .build();
             } else {
                 logger.debug("Retest check for {}: Low {}, Close {}. ORB High {}. Proximity: {}%, PulledBack: {}, ClosedAbove: {}",
