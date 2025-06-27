@@ -41,7 +41,19 @@ public class TradingEngine {
     private final OrbStrategy orbStrategy; // +OrbStrategy
 
     // Data structures for ORB Strategy support
-    private final Map<String, List<OHLC>> oneMinuteBarsHistory = new ConcurrentHashMap<>(); // +OrbStrategy
+    /** Inner class to hold OHLC and Volume for a bar */
+    private static class BarData {
+        final OHLC ohlc;
+        final long volume;
+        final long timestamp; // Start timestamp of the bar
+
+        BarData(OHLC ohlc, long volume, long timestamp) {
+            this.ohlc = ohlc;
+            this.volume = volume;
+            this.timestamp = timestamp;
+        }
+    }
+    private final Map<String, List<BarData>> oneMinuteBarsHistory = new ConcurrentHashMap<>(); // Stores OHLCV
     private final Map<String, PreviousDayData> dailyPdhCache = new ConcurrentHashMap<>(); // +OrbStrategy
 
 
@@ -101,27 +113,23 @@ public class TradingEngine {
 
     // Helper method to calculate average volume from the stored 1-minute bar history
     private double calculateAverageVolume(String symbol, int lookbackPeriods) {
-        List<OHLC> history = oneMinuteBarsHistory.get(symbol);
+        List<BarData> history = oneMinuteBarsHistory.get(symbol);
         if (history == null || history.isEmpty() || lookbackPeriods <= 0) {
             logger.warn("Cannot calculate average volume for {}: No history or invalid lookback {}.", symbol, lookbackPeriods);
-            return 0.0; // Or a default high volume to prevent accidental triggers if avg is 0
+            return 0.0;
         }
 
         int actualLookback = Math.min(lookbackPeriods, history.size());
-        // Calculate average from the most recent 'actualLookback' bars, excluding the current forming bar
-        // Assumes 'history' contains bars *before* the current one being processed by onOneMinuteBarClose
-
         double sumVolume = 0;
-        // Iterate from end of list backwards
+        // Iterate from end of list backwards (most recent `actualLookback` bars)
+        // The 'history' list contains bars *before* the current one being processed.
         for (int i = 0; i < actualLookback; i++) {
-            if (history.size() - 1 - i >= 0) { // Ensure we don't go out of bounds if history is short
-                 sumVolume += history.get(history.size() - 1 - i).getVolume();
-            } else {
-                break; // Not enough history for full lookback
-            }
+            // history.size() - 1 is the latest bar in history (which is previous to current newBar)
+            // history.size() - 1 - i gets elements going backwards
+            sumVolume += history.get(history.size() - 1 - i).volume;
         }
 
-        if (actualLookback == 0) return 0.0; // Should be caught by history.isEmpty() but as safeguard
+        if (actualLookback == 0) return 0.0;
         double avgVol = sumVolume / actualLookback;
         logger.debug("Calculated avg volume for {}: Lookback={}, ActualLookback={}, SumVol={}, AvgVol={}",
             symbol, lookbackPeriods, actualLookback, sumVolume, avgVol);
@@ -132,19 +140,20 @@ public class TradingEngine {
     /**
      * Processes a newly closed 1-minute bar for a symbol to generate ORB strategy signals.
      * @param symbol The stock symbol.
-     * @param newBar The newly closed 1-minute OHLC bar.
+     * @param ohlcPortion The OHLC part of the newly closed 1-minute bar.
+     * @param volumeForBar The volume for this newly closed 1-minute bar.
      * @param barTimestamp The epoch millisecond starting timestamp of this newBar.
      * @param latestTickForDepth The latest available Tick object for this symbol (to get depth).
      * @return TradingSignal from ORB strategy, or null if no signal.
      */
-    public TradingSignal onOneMinuteBarClose(String symbol, OHLC newBar, long barTimestamp, Tick latestTickForDepth) {
-        if (symbol == null || newBar == null || latestTickForDepth == null) {
+    public TradingSignal onOneMinuteBarClose(String symbol, OHLC ohlcPortion, long volumeForBar, long barTimestamp, Tick latestTickForDepth) {
+        if (symbol == null || ohlcPortion == null || latestTickForDepth == null) {
             logger.warn("Invalid arguments for onOneMinuteBarClose for symbol: {}", symbol);
             return null;
         }
 
         logger.debug("Processing 1-min bar for {}: O={}, H={}, L={}, C={}, V={}, Time={}",
-                symbol, newBar.getOpen(), newBar.getHigh(), newBar.getLow(), newBar.getClose(), newBar.getVolume(), barTimestamp);
+                symbol, ohlcPortion.getOpen(), ohlcPortion.getHigh(), ohlcPortion.getLow(), ohlcPortion.getClose(), volumeForBar, barTimestamp);
 
         // Retrieve PDH from cache
         PreviousDayData pdhData = dailyPdhCache.get(symbol);
@@ -159,16 +168,16 @@ public class TradingEngine {
         // double previousDayHigh = (pdhData != null) ? pdhData.getPreviousHigh() : 0.0; // OrbStrategy handles its own PDH state
 
         // Prepare VolumeData
-        // Note: calculateAverageVolume needs history *before* adding the newBar.
-        // So, we calculate based on current history, then add newBar.
+        // Note: calculateAverageVolume needs history *before* adding the new BarData.
         double averageLastNVols = calculateAverageVolume(symbol, orbStrategyParameters.getVolumeAverageLookbackCandles());
-        OrbStrategy.VolumeData volumeData = new OrbStrategy.VolumeData(newBar.getVolume(), averageLastNVols);
+        OrbStrategy.VolumeData volumeData = new OrbStrategy.VolumeData(volumeForBar, averageLastNVols);
 
         // Update history *after* calculating average for the current bar's context
-        List<OHLC> history = oneMinuteBarsHistory.computeIfAbsent(symbol, k -> new ArrayList<>());
-        history.add(newBar); // Add current bar to history
-        // Optional: Trim history if it grows too large, e.g., keep last X bars
-        int maxHistorySize = Math.max(20, orbStrategyParameters.getVolumeAverageLookbackCandles() + 5); // Keep a bit more than lookback
+        List<BarData> history = oneMinuteBarsHistory.computeIfAbsent(symbol, k -> new ArrayList<>());
+        history.add(new BarData(ohlcPortion, volumeForBar, barTimestamp)); // Add current bar to history
+
+        // Optional: Trim history if it grows too large
+        int maxHistorySize = Math.max(20, orbStrategyParameters.getVolumeAverageLookbackCandles() + 5);
         while (history.size() > maxHistorySize) {
             history.remove(0);
         }
@@ -185,7 +194,8 @@ public class TradingEngine {
 
         // Call OrbStrategy
         if (orbStrategy != null) {
-            TradingSignal orbSignal = orbStrategy.processBar(symbol, newBar, barTimestamp, bidDepth, askDepth, volumeData);
+            // Pass the OHLC part of the new bar to the strategy
+            TradingSignal orbSignal = orbStrategy.processBar(symbol, ohlcPortion, barTimestamp, bidDepth, askDepth, volumeData);
             if (orbSignal != null && orbSignal.getAction() != TradeAction.HOLD) {
                 logger.info("TradingEngine: ORB Strategy generated signal for {}: {}", symbol, orbSignal);
                 return orbSignal;
