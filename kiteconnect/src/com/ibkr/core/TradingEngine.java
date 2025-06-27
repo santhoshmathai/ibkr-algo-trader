@@ -10,6 +10,8 @@ import com.ibkr.data.TickAggregator; // +OrbStrategy
 import com.ibkr.strategy.orb.OrbStrategy; // +OrbStrategy
 import com.ibkr.strategy.common.OrbStrategyParameters; // +OrbStrategy
 import com.ibkr.AppContext; // +OrbStrategy
+import com.ibkr.strategy.orb.OrbStrategyState;
+import com.zerodhatech.models.Depth;
 import com.zerodhatech.models.Tick;
 import com.zerodhatech.models.OHLC; // +OrbStrategy
 import com.ibkr.models.TradingSignal;
@@ -24,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map; // New import
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class TradingEngine {
     private static final Logger logger = LoggerFactory.getLogger(TradingEngine.class); // Added
@@ -102,7 +105,7 @@ public class TradingEngine {
 
         // Reset other strategy states here if needed
         // e.g., clear oneMinuteBarsHistory for the symbol if it's not automatically managed by size
-        List<OHLC> history = oneMinuteBarsHistory.get(symbol);
+        List<BarData> history = oneMinuteBarsHistory.get(symbol);
         if (history != null) {
             history.clear(); // Clears history for the new day
             logger.debug("Cleared 1-minute bar history for {}", symbol);
