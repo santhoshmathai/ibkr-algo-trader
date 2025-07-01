@@ -76,7 +76,9 @@ public class AppContext {
     private final TickProcessor tickProcessor;
 
     private final Set<String> top100USStocks;
-    private Map<String, PreviousDayData> previousDayDataMap = new ConcurrentHashMap<>(); // Initialized
+    private final Map<String, PreviousDayData> previousDayDataMap = new ConcurrentHashMap<>(); // Initialized
+    // Map to track historical data request IDs to symbols
+    private final Map<Integer, String> historicalDataReqIdToSymbol = new ConcurrentHashMap<>(); // +PDH Fetch
 
     // TWS Connection Parameters
     private final String twsHost;
@@ -410,5 +412,47 @@ public class AppContext {
 
     public VolatilityAnalyzer getVolatilityAnalyzer() {
         return volatilityAnalyzer;
+    }
+
+    // Methods for PDH data handling specific to historical requests
+    public void registerHistoricalDataRequest(int reqId, String symbol) {
+        if (symbol == null || symbol.trim().isEmpty()) {
+            logger.warn("Attempted to register historical data request with null or empty symbol for reqId: {}", reqId);
+            return;
+        }
+        historicalDataReqIdToSymbol.put(reqId, symbol);
+        logger.debug("Registered historical data request: reqId={}, symbol={}", reqId, symbol);
+    }
+
+    public String getSymbolForHistoricalDataRequest(int reqId) {
+        String symbol = historicalDataReqIdToSymbol.get(reqId);
+        // logger.trace("Symbol for historical data reqId {}: {}", reqId, symbol); // Can be noisy
+        return symbol;
+    }
+
+    public void removeHistoricalDataRequest(int reqId) {
+        String removedSymbol = historicalDataReqIdToSymbol.remove(reqId);
+        if (removedSymbol != null) {
+            logger.debug("Removed historical data request from tracking: reqId={}, symbol={}", reqId, removedSymbol);
+        } else {
+            // logger.warn("Attempted to remove non-existent historical data request for reqId: {}", reqId);
+        }
+    }
+
+    public void updatePdhForSymbol(String symbol, PreviousDayData pdhData) {
+        if (symbol == null || symbol.trim().isEmpty() || pdhData == null) {
+            logger.warn("Cannot update PDH for symbol '{}': invalid symbol or pdhData is null.", symbol);
+            return;
+        }
+        previousDayDataMap.put(symbol, pdhData);
+        logger.info("Updated PDH data for symbol: {}. High: {}, Low: {}, Close: {}",
+            symbol, pdhData.getPreviousHigh(), pdhData.getPreviousLow(), pdhData.getPreviousClose());
+
+        // After updating PDH in AppContext, also inform TradingEngine
+        if (this.tradingEngine != null) {
+            this.tradingEngine.initializeStrategyForSymbol(symbol, pdhData);
+        } else {
+            logger.warn("TradingEngine is null in AppContext. Cannot initialize strategies for symbol {} after PDH update.", symbol);
+        }
     }
 }
