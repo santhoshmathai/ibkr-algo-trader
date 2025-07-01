@@ -2,12 +2,11 @@ package com.ibkr.utils;
 
 import com.ibkr.AppContext;
 import com.ibkr.models.PreviousDayData;
-// Consider adding a Logger if warnings/errors are to be logged here.
-// import org.slf4j.Logger;
-// import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class DataUtils {
-    // private static final Logger logger = LoggerFactory.getLogger(DataUtils.class); // Optional
+    private static final Logger logger = LoggerFactory.getLogger(DataUtils.class);
 
     /**
      * Retrieves the Previous Day High (PDH) for a given stock symbol.
@@ -22,32 +21,29 @@ public class DataUtils {
      */
     public static Double getPreviousDayHighForSymbol(AppContext appContext, String symbol) {
         if (appContext == null) {
-            // logger.warn("AppContext is null. Cannot retrieve Previous Day High."); // Optional logging
+            logger.warn("AppContext is null. Cannot retrieve Previous Day High.");
             return null;
         }
         if (symbol == null || symbol.trim().isEmpty()) {
-            // logger.warn("Symbol is null or empty. Cannot retrieve Previous Day High."); // Optional logging
+            logger.warn("Symbol is null or empty. Cannot retrieve Previous Day High.");
             return null;
         }
 
         PreviousDayData pdhData = appContext.getPreviousDayData(symbol);
 
         if (pdhData != null) {
-            // Assuming getPreviousHigh() returns a double primitive.
-            // If it can return null (e.g. if data was missing for high),
-            // and the return type of getPreviousHigh() is Double, then no further check is needed.
-            // If getPreviousHigh() returns 0.0 for missing data, that might be ambiguous.
-            // For now, directly return what getPreviousHigh() provides.
             double previousHigh = pdhData.getPreviousHigh();
-            if (previousHigh == 0.0) {
-                // This could mean data was missing or PDH was actually 0.0 (unlikely for most stocks).
-                // Depending on requirements, one might want to log this or treat 0.0 as 'not available'.
-                // logger.debug("PreviousDayHigh for symbol {} is 0.0. This might indicate missing data or an actual value.", symbol);
+            if (previousHigh == 0.0 && pdhData.getPreviousLow() == 0.0 && pdhData.getPreviousClose() == 0.0) {
+                // If H, L, C are all 0.0, it's highly likely data wasn't properly populated or it's a non-trading entity.
+                logger.warn("PreviousDayHigh for symbol {} is 0.0 (and L/C also 0.0), likely indicating missing or incomplete PDH data in AppContext.", symbol);
+                // Depending on strategy, returning null might be safer than returning 0.0 if 0.0 isn't a valid high.
+                // However, if 0.0 can be a legitimate (though rare) previous high, this check might need adjustment.
+                // For now, if pdhData object exists, we trust its values.
+                // If PDH is truly 0.0, it's still a value. The OrbStrategy would fail the PDH check naturally.
             }
-            return previousHigh; // If getPreviousHigh returns double, this is fine.
-                                 // If it returns Double, it could be null.
+            return previousHigh;
         } else {
-            // logger.warn("PreviousDayData not found for symbol: {}. Cannot retrieve PDH.", symbol); // Optional logging
+            logger.warn("PreviousDayData not found in AppContext cache for symbol: {}. Cannot retrieve PDH. Ensure PDH data is fetched and populated at startup.", symbol);
             return null;
         }
     }

@@ -394,44 +394,85 @@ public class IBClient implements EWrapper {
 
     @Override
     public void historicalData(int reqId, Bar bar) {
-        logger.debug("HistoricalData - ReqId: {}, Date: {}, O: {}, H: {}, L: {}, C: {}, V: {}, WAP: {}",
-                reqId, bar.time(), bar.open(), bar.high(), bar.low(), bar.close(), bar.volume(), bar.wap());
+        logger.info("HistoricalData - ReqId: {}, Symbol: {}, Date: {}, O: {}, H: {}, L: {}, C: {}, Volume: {}",
+                reqId, appContext.getSymbolForHistoricalDataRequest(reqId), bar.time(), bar.open(), bar.high(), bar.low(), bar.close(), bar.volume());
 
-        PreviousDayData data = historicalDataRequests.get(reqId);
-        if (data != null) {
-            data.setPreviousHigh(bar.high());
-            data.setPreviousLow(bar.low()); // **** ADDED THIS LINE ****
-            data.setPreviousClose(bar.close());
-            // Assuming only one bar is expected for "1 D" duration
-            successfullyFetchedPrevDayData.put(data.getSymbol(), data);
-            // No need to remove from historicalDataRequests immediately, historicalDataEnd will handle latch
+        String symbol = appContext.getSymbolForHistoricalDataRequest(reqId);
+        if (symbol != null) {
+            PreviousDayData pdhData = new PreviousDayData(symbol, bar.high(), bar.low(), bar.close());
+            // Potentially set volume and time if PreviousDayData model supports it and it's useful.
+            // pdhData.setVolume(bar.volume());
+            // pdhData.setTimestamp(bar.time()); // bar.time() is String "yyyyMMdd  HH:mm:ss"
+
+            appContext.updatePdhForSymbol(symbol, pdhData);
+            logger.info("Updated PDH for {} via historicalData callback: H={}, L={}, C={}", symbol, bar.high(), bar.low(), bar.close());
         } else {
-            logger.warn("Received historical data for unknown reqId: {}", reqId);
+            logger.warn("Received historical data for reqId: {} but no symbol was registered for this ID in AppContext.", reqId);
         }
     }
 
     @Override
     public void historicalDataEnd(int reqId, String startDateStr, String endDateStr) {
-        logger.info("HistoricalDataEnd - ReqId: {}, StartDate: {}, EndDate: {}", reqId, startDateStr, endDateStr);
-        PreviousDayData data = historicalDataRequests.get(reqId);
-        if (data != null) {
-            if (!successfullyFetchedPrevDayData.containsKey(data.getSymbol())) {
-                // This means historicalData callback was not called, or no bar was returned.
-                logger.warn("HistoricalDataEnd received for reqId: {}, but no bar data was processed for symbol: {}. Storing with 0 values.", reqId, data.getSymbol());
-                // Store it with 0s to mark it as processed and prevent latch timeout if this is acceptable.
-                // Or handle as an error. For now, storing with 0s.
-                successfullyFetchedPrevDayData.put(data.getSymbol(), data);
+        String symbol = appContext.getSymbolForHistoricalDataRequest(reqId);
+        logger.info("HistoricalDataEnd - ReqId: {}, Symbol: {}, StartDate: {}, EndDate: {}",
+                    reqId, symbol != null ? symbol : "N/A", startDateStr, endDateStr);
+
+        if (symbol != null) {
+            // Optionally, verify if data was actually received for this symbol if needed
+            // For example, check if appContext.getPreviousDayData(symbol) is now populated.
+            if (appContext.getPreviousDayData(symbol) == null) {
+                logger.warn("HistoricalDataEnd received for symbol {}, but no PreviousDayData was populated in AppContext. Possible issue with data retrieval or symbol mapping for reqId {}.", symbol, reqId);
             }
         } else {
-             logger.warn("HistoricalDataEnd received for unknown reqId: {}", reqId);
+            logger.warn("HistoricalDataEnd received for reqId: {} but no symbol was registered for this ID. No action taken to confirm data population.", reqId);
         }
+
+        // Clean up the reqId from AppContext tracking map
+        appContext.removeHistoricalDataRequest(reqId);
+
+        // If using a latch for batch requests (like in fetchPreviousDayDataForAllStocks), count it down.
         if (historicalDataLatch != null) {
             historicalDataLatch.countDown();
-            logger.debug("Historical data latch countDown. Remaining: {}", historicalDataLatch.getCount());
+            logger.debug("Historical data latch countDown for reqId {}. Remaining: {}", reqId, historicalDataLatch.getCount());
         }
     }
 
+    /**
+     * Requests historical data for the previous trading day for a single symbol.
+     * The received data will be processed by the historicalData and historicalDataEnd callbacks.
+     * @param contract The IB Contract object for the symbol.
+     * @param symbol The symbol string (for logging and mapping).
+     */
+    public void requestPreviousDayDataForSymbol(Contract contract, String symbol) {
+        if (!clientSocket.isConnected()) {
+            logger.error("Cannot request historical data for {}: Not connected to TWS.", symbol);
+            return;
+        }
+        if (contract == null || symbol == null || symbol.isEmpty()) {
+            logger.error("Invalid contract or symbol for requesting previous day data.");
+            return;
+        }
 
+        int reqId = appContext.getNextRequestId();
+        appContext.registerHistoricalDataRequest(reqId, symbol);
+
+        // For previous day's bar, endDateTime can be empty.
+        // TWS will provide the last available trading day's data.
+        String endDateTime = ""; // IB typically provides previous day if empty
+        String durationStr = "1 D"; // Duration: 1 Day
+        String barSizeSetting = "1 day"; // Bar size: 1 Day
+        String whatToShow = "TRADES"; // Use TRADES data
+        int useRTH = 1;       // 1 for data within Regular Trading Hours, 0 for all hours
+        int formatDate = 1;   // 1 for yyyyMMdd HH:mm:ss, 2 for epoch seconds
+        List<TagValue> chartOptions = null; // No specific chart options
+
+        logger.info("Requesting Previous Day Data for {}({}): ReqId={}", symbol, contract.conid(), reqId);
+        clientSocket.reqHistoricalData(reqId, contract, endDateTime, durationStr, barSizeSetting, whatToShow, useRTH, formatDate, false, chartOptions);
+    }
+
+
+    // This method might need to be refactored or removed if PDH is fetched per symbol individually at startup.
+    // Keeping it for now but noting its interaction with the new per-symbol request.
     public Map<String, PreviousDayData> fetchPreviousDayDataForAllStocks(Set<String> symbols) throws InterruptedException {
         if (symbols == null || symbols.isEmpty()) {
             logger.warn("Symbol list is empty. Cannot fetch previous day data.");
