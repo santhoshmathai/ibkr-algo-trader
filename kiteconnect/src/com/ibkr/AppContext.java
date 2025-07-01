@@ -414,6 +414,10 @@ public class AppContext {
         return volatilityAnalyzer;
     }
 
+    public TradingEngine getTradingEngine() { // Added getter for TradingEngine
+        return tradingEngine;
+    }
+
     // Methods for PDH data handling specific to historical requests
     public void registerHistoricalDataRequest(int reqId, String symbol) {
         if (symbol == null || symbol.trim().isEmpty()) {

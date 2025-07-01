@@ -44,13 +44,13 @@ public class TradingEngine {
     private final OrbStrategy orbStrategy; // +OrbStrategy
 
     // Data structures for ORB Strategy support
-    /** Inner class to hold OHLC and Volume for a bar */
-    private static class BarData {
-        final OHLC ohlc;
-        final long volume;
-        final long timestamp; // Start timestamp of the bar
+    /** Inner public static class to hold OHLC and Volume for a bar, accessible by DataUtils */
+    public static class BarData {
+        public final OHLC ohlc;
+        public final long volume;
+        public final long timestamp; // Start timestamp of the bar
 
-        BarData(OHLC ohlc, long volume, long timestamp) {
+        public BarData(OHLC ohlc, long volume, long timestamp) {
             this.ohlc = ohlc;
             this.volume = volume;
             this.timestamp = timestamp;
@@ -440,4 +440,19 @@ public class TradingEngine {
     }
 
     // Removed generateBullishSignals and generateBearishSignals methods
+
+    /**
+     * Retrieves the most recently completed 1-minute bar data for a symbol.
+     * @param symbol The stock symbol.
+     * @return The last BarData object, or null if no history exists for the symbol.
+     */
+    public BarData getLastCompletedBarData(String symbol) {
+        List<BarData> history = oneMinuteBarsHistory.get(symbol);
+        if (history != null && !history.isEmpty()) {
+            // The last element in the list is the most recently added (completed) bar
+            return history.get(history.size() - 1);
+        }
+        logger.debug("No 1-minute bar history found for symbol {} when requesting last completed bar.", symbol);
+        return null;
+    }
 }
