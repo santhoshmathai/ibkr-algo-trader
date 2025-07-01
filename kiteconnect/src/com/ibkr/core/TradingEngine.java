@@ -10,6 +10,10 @@ import com.ibkr.data.TickAggregator; // +OrbStrategy
 import com.ibkr.strategy.orb.OrbStrategy; // +OrbStrategy
 import com.ibkr.strategy.common.OrbStrategyParameters; // +OrbStrategy
 import com.ibkr.AppContext; // +OrbStrategy
+
+import com.ibkr.analysis.IntradayPriceActionAnalyzer; // +PriceAction
+import com.ibkr.models.PriceActionSignal; // +PriceAction
+
 import com.ibkr.strategy.orb.OrbStrategyState;
 import com.zerodhatech.models.Depth;
 import com.zerodhatech.models.Tick;
@@ -42,6 +46,7 @@ public class TradingEngine {
     private final TickAggregator tickAggregator; // +OrbStrategy
     private final OrbStrategyParameters orbStrategyParameters; // +OrbStrategy
     private final OrbStrategy orbStrategy; // +OrbStrategy
+    private final IntradayPriceActionAnalyzer intradayPriceActionAnalyzer; // +PriceAction
 
     // Data structures for ORB Strategy support
     /** Inner public static class to hold OHLC and Volume for a bar, accessible by DataUtils */
@@ -77,7 +82,10 @@ public class TradingEngine {
         // Initialize ORB Strategy components
         this.orbStrategyParameters = new OrbStrategyParameters(); // Using default parameters for now
         this.orbStrategy = new OrbStrategy(this.appContext, this.instrumentRegistry, this.orbStrategyParameters, "America/New_York"); // Assuming ET for IBKR
-        logger.info("TradingEngine initialized, including OrbStrategy.");
+
+        // Initialize Intraday Price Action Analyzer
+        this.intradayPriceActionAnalyzer = new IntradayPriceActionAnalyzer(this.appContext); // +PriceAction
+        logger.info("TradingEngine initialized, including OrbStrategy and IntradayPriceActionAnalyzer.");
     }
 
     /**
@@ -109,6 +117,12 @@ public class TradingEngine {
         if (history != null) {
             history.clear(); // Clears history for the new day
             logger.debug("Cleared 1-minute bar history for {}", symbol);
+        }
+
+        // Initialize IntradayPriceActionAnalyzer state for the symbol
+        if (intradayPriceActionAnalyzer != null) {
+            // intradayOpen will be properly set by the first bar in IntradayPriceActionAnalyzer.processBar
+            intradayPriceActionAnalyzer.initializeSymbol(symbol, pdhData.getPreviousHigh(), pdhData.getPreviousClose());
         }
 
         logger.info("Daily strategy initialization complete for symbol: {}", symbol);
@@ -201,9 +215,39 @@ public class TradingEngine {
             TradingSignal orbSignal = orbStrategy.processBar(symbol, ohlcPortion, barTimestamp, bidDepth, askDepth, volumeData);
             if (orbSignal != null && orbSignal.getAction() != TradeAction.HOLD) {
                 logger.info("TradingEngine: ORB Strategy generated signal for {}: {}", symbol, orbSignal);
+                // Potentially return orbSignal here if it should take precedence immediately,
+                // or let PriceActionAnalyzer run and decide later.
+                // For now, let ORB signal take precedence if generated.
                 return orbSignal;
             }
         }
+
+        // Process with IntradayPriceActionAnalyzer
+        if (intradayPriceActionAnalyzer != null) {
+            // historyForVolumeAvg for IntradayPriceActionAnalyzer might be different if it needs a different lookback
+            // For now, using the same oneMinuteBarsHistory.get(symbol)
+            List<BarData> currentHistory = oneMinuteBarsHistory.get(symbol);
+            if (currentHistory == null) { // Should have been initialized by computeIfAbsent earlier
+                currentHistory = new ArrayList<>(); // Avoid NPE if somehow null
+            }
+            // Create a new BarData for the current bar to pass to processBar
+            BarData currentBarData = new BarData(ohlcPortion, volumeForBar, barTimestamp);
+            intradayPriceActionAnalyzer.processBar(symbol, currentBarData, new ArrayList<>(currentHistory)); // Pass a copy of history
+
+            PriceActionSignal priceActionSignal = intradayPriceActionAnalyzer.getSignal(symbol);
+            if (priceActionSignal != null &&
+                (priceActionSignal == PriceActionSignal.SIGNIFICANT_POSITIVE_CHANGE || priceActionSignal == PriceActionSignal.SIGNIFICANT_NEGATIVE_CHANGE)) {
+                logger.info("TradingEngine: IntradayPriceActionAnalyzer detected for {}: {}", symbol, priceActionSignal);
+                // TODO: Convert PriceActionSignal to TradingSignal or handle as an alert/event
+                // This part is for analysis; actual trading signal generation would need more definition.
+                // For example, if SIGNIFICANT_POSITIVE_CHANGE, do we generate a BUY TradingSignal?
+                // If so, it needs price, quantity etc.
+                // For now, just logging.
+            }
+        }
+
+        // If ORB signal was generated and returned, this part is skipped.
+        // If no ORB signal, and PriceActionAnalyzer is just for logging/events now, return null.
         return null;
     }
 
