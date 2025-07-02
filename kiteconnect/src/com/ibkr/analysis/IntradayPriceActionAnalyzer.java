@@ -30,10 +30,15 @@ public class IntradayPriceActionAnalyzer {
         this.appContext = appContext;
     }
 
-    private IntradayPriceActionState getState(String symbol) {
+    public IntradayPriceActionState getState(String symbol) { // Made public
         return stateBySymbol.computeIfAbsent(symbol, k -> {
             logger.info("Creating new IntradayPriceActionState for symbol: {}", k);
-            return new IntradayPriceActionState(k);
+            // Initialize with some defaults if accessed before initializeSymbol, though not ideal
+            PreviousDayData pdhData = appContext.getPreviousDayData(k);
+            double pdhVal = (pdhData != null) ? pdhData.getPreviousHigh() : 0.0;
+            IntradayPriceActionState newState = new IntradayPriceActionState(k);
+            newState.pdh = pdhVal; // Attempt to set pdh if available
+            return newState;
         });
     }
 

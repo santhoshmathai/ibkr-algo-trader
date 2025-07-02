@@ -158,7 +158,6 @@ public class AppContext {
         this.riskManager = new RiskManager(this.liquidityMonitor, this.volatilityAnalyzer);
         this.marketDataHandler = new MarketDataHandler(); // Added instantiation
 
-        this.tickAggregator = new TickAggregator(this.instrumentRegistry);
 
         // Level 1: Depend on Level 0
         this.tradingEngine = new TradingEngine(
@@ -179,6 +178,7 @@ public class AppContext {
             this.sectorStrengthAnalyzer,
             this.supportResistanceAnalyzer // Added supportResistanceAnalyzer
         );
+        this.tickAggregator = new TickAggregator(this.instrumentRegistry);
 
         // Create IBOrderExecutor without EClientSocket first
         this.ibOrderExecutor = new IBOrderExecutor(

@@ -10,12 +10,9 @@ import com.ibkr.data.TickAggregator; // +OrbStrategy
 import com.ibkr.strategy.orb.OrbStrategy; // +OrbStrategy
 import com.ibkr.strategy.common.OrbStrategyParameters; // +OrbStrategy
 import com.ibkr.AppContext; // +OrbStrategy
-
 import com.ibkr.analysis.IntradayPriceActionAnalyzer; // +PriceAction
 import com.ibkr.models.PriceActionSignal; // +PriceAction
-
-import com.ibkr.strategy.orb.OrbStrategyState;
-import com.zerodhatech.models.Depth;
+import com.ibkr.alert.TradeAlertLogger; // +Alerts
 import com.zerodhatech.models.Tick;
 import com.zerodhatech.models.OHLC; // +OrbStrategy
 import com.ibkr.models.TradingSignal;
@@ -30,7 +27,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map; // New import
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class TradingEngine {
     private static final Logger logger = LoggerFactory.getLogger(TradingEngine.class); // Added
@@ -113,7 +109,7 @@ public class TradingEngine {
 
         // Reset other strategy states here if needed
         // e.g., clear oneMinuteBarsHistory for the symbol if it's not automatically managed by size
-        List<BarData> history = oneMinuteBarsHistory.get(symbol);
+        List<OHLC> history = oneMinuteBarsHistory.get(symbol);
         if (history != null) {
             history.clear(); // Clears history for the new day
             logger.debug("Cleared 1-minute bar history for {}", symbol);
@@ -237,12 +233,23 @@ public class TradingEngine {
             PriceActionSignal priceActionSignal = intradayPriceActionAnalyzer.getSignal(symbol);
             if (priceActionSignal != null &&
                 (priceActionSignal == PriceActionSignal.SIGNIFICANT_POSITIVE_CHANGE || priceActionSignal == PriceActionSignal.SIGNIFICANT_NEGATIVE_CHANGE)) {
-                logger.info("TradingEngine: IntradayPriceActionAnalyzer detected for {}: {}", symbol, priceActionSignal);
-                // TODO: Convert PriceActionSignal to TradingSignal or handle as an alert/event
-                // This part is for analysis; actual trading signal generation would need more definition.
-                // For example, if SIGNIFICANT_POSITIVE_CHANGE, do we generate a BUY TradingSignal?
-                // If so, it needs price, quantity etc.
-                // For now, just logging.
+
+                com.ibkr.analysis.IntradayPriceActionState priceActionState = intradayPriceActionAnalyzer.getState(symbol); // Assuming getState is public in analyzer
+                String alertMessage = String.format("Signal: %s, TriggerPrice: %.2f, CurrentHigh: %.2f, CurrentLow: %.2f, BarClose: %.2f",
+                        priceActionSignal.name(),
+                        priceActionState.initialTriggerPrice,
+                        priceActionState.highestPriceAfterTrigger,
+                        priceActionState.lowestPriceAfterTrigger,
+                        ohlcPortion.getClose());
+
+                TradeAlertLogger.logSystemAlert(
+                        "PRICE_ACTION",
+                        symbol,
+                        alertMessage,
+                        ohlcPortion.getClose() // Context price for the alert
+                );
+                logger.info("TradingEngine: Alert logged for {} - {}", symbol, alertMessage);
+                // TODO: Convert PriceActionSignal to TradingSignal for execution if needed.
             }
         }
 
