@@ -78,4 +78,43 @@ public class TradeAlertLogger {
             logger.error("Failed to write trade alert to file {}: {}", ALERT_FILE_NAME, e.getMessage(), e);
         }
     }
+
+    /**
+     * Logs a generic system or strategy alert to the TradeAlerts.txt file.
+     * This method is synchronized to prevent concurrent write issues to the file.
+     *
+     * @param alertType A string categorizing the alert (e.g., "PRICE_ACTION", "ORB_SIGNAL").
+     * @param symbol The stock symbol related to the alert.
+     * @param message A descriptive message for the alert.
+     * @param contextPrice A relevant price associated with the alert (e.g., trigger price, current price). Can be 0 if not applicable.
+     */
+    public static synchronized void logSystemAlert(String alertType, String symbol, String message, double contextPrice) {
+        if (alertType == null || symbol == null || message == null) {
+            logger.warn("Attempted to log system alert with null alertType, symbol, or message.");
+            return;
+        }
+
+        try (FileWriter fw = new FileWriter(ALERT_FILE_NAME, true);
+             BufferedWriter bw = new BufferedWriter(fw);
+             PrintWriter out = new PrintWriter(bw)) {
+
+            ZonedDateTime alertTimestamp = ZonedDateTime.now(ZoneId.systemDefault());
+            String formattedTimestamp = alertTimestamp.format(ALERT_TIMESTAMP_FORMAT);
+
+            StringBuilder alertMsg = new StringBuilder();
+            alertMsg.append("Timestamp: ").append(formattedTimestamp);
+            alertMsg.append(", Type: ").append(alertType);
+            alertMsg.append(", Symbol: ").append(symbol);
+            if (contextPrice != 0.0) { // Only include price if relevant (non-zero)
+                alertMsg.append(", ContextPrice: ").append(String.format(Locale.US, "%.2f", contextPrice));
+            }
+            alertMsg.append(", Message: ").append(message);
+
+            out.println(alertMsg.toString());
+            logger.info("System alert logged for symbol {}: {}", symbol, alertMsg.toString());
+
+        } catch (IOException e) {
+            logger.error("Failed to write system alert to file {}: {}", ALERT_FILE_NAME, e.getMessage(), e);
+        }
+    }
 }
