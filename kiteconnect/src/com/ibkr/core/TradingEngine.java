@@ -2,6 +2,8 @@ package com.ibkr.core;
 
 import com.ibkr.analysis.MarketSentimentAnalyzer;
 import com.ibkr.analysis.SectorStrengthAnalyzer;
+import com.ibkr.analysis.VolumeSpikeAnalyzer;
+import com.ibkr.data.HistoricalVolumeService;
 import com.ibkr.indicators.*;
 import com.ibkr.safeguards.*;
 import com.ibkr.liquidity.*;
@@ -9,6 +11,7 @@ import com.ibkr.data.InstrumentRegistry;
 import com.ibkr.data.TickAggregator; // +OrbStrategy
 import com.ibkr.strategy.orb.OrbStrategy; // +OrbStrategy
 import com.ibkr.strategy.common.OrbStrategyParameters; // +OrbStrategy
+import com.ibkr.strategy.common.VolumeSpikeStrategyParameters;
 import com.ibkr.AppContext; // +OrbStrategy
 import com.ibkr.analysis.IntradayPriceActionAnalyzer; // +PriceAction
 import com.ibkr.models.PriceActionSignal; // +PriceAction
@@ -43,6 +46,8 @@ public class TradingEngine {
     private final OrbStrategyParameters orbStrategyParameters; // +OrbStrategy
     private final OrbStrategy orbStrategy; // +OrbStrategy
     private final IntradayPriceActionAnalyzer intradayPriceActionAnalyzer; // +PriceAction
+    private final HistoricalVolumeService historicalVolumeService;
+    private final VolumeSpikeAnalyzer volumeSpikeAnalyzer;
 
     // Data structures for ORB Strategy support
     /** Inner public static class to hold OHLC and Volume for a bar, accessible by DataUtils */
@@ -81,7 +86,21 @@ public class TradingEngine {
 
         // Initialize Intraday Price Action Analyzer
         this.intradayPriceActionAnalyzer = new IntradayPriceActionAnalyzer(this.appContext); // +PriceAction
-        logger.info("TradingEngine initialized, including OrbStrategy and IntradayPriceActionAnalyzer.");
+
+        // Initialize Volume Spike Analysis components
+        VolumeSpikeStrategyParameters volumeParams = new VolumeSpikeStrategyParameters();
+        this.historicalVolumeService = new HistoricalVolumeService(volumeParams);
+        this.volumeSpikeAnalyzer = new VolumeSpikeAnalyzer(this.historicalVolumeService, volumeParams);
+
+        // Load historical volume data at startup
+        Set<String> symbolsToMonitor = instrumentRegistry.getAllSymbols();
+        if (symbolsToMonitor != null && !symbolsToMonitor.isEmpty()) {
+            historicalVolumeService.calculateAverageVolumes(new ArrayList<>(symbolsToMonitor));
+        } else {
+            logger.warn("No symbols found in InstrumentRegistry at startup. Historical volume data will not be pre-loaded.");
+        }
+
+        logger.info("TradingEngine initialized, including OrbStrategy, IntradayPriceActionAnalyzer, and VolumeSpikeAnalyzer.");
     }
 
     /**
@@ -307,6 +326,7 @@ public class TradingEngine {
         logger.debug("Updating analyzers for symbol: {}, LTP: {}", tick.getSymbol(), tick.getLastTradedPrice());
         vwapAnalyzer.update(tick);
         volumeAnalyzer.update(tick);
+        volumeSpikeAnalyzer.update(tick, tick.getSymbol()); // Update our new analyzer
         sectorStrengthAnalyzer.updateSectorPerformance(tick.getSymbol(),
                 (tick.getLastTradedPrice() - tick.getOpenPrice()) / tick.getOpenPrice());
         circuitBreakerMonitor.updateStatus(tick.getSymbol(),
@@ -328,11 +348,13 @@ public class TradingEngine {
         boolean enterLong = !position.isInPosition() &&
                 vwapAnalyzer.isAboveVWAP(tick) &&
                 volumeAnalyzer.isBreakoutWithSpike(tick) &&
+                volumeSpikeAnalyzer.isHappening(tick.getSymbol()) && // New volume spike check
                 sectorCheckPass &&
                 circuitBreakerMonitor.allowAggressiveOrders(tick.getSymbol());
-        logger.debug("shouldEnterLong for {}: Conditions - InPosition: {}, AboveVWAP: {}, VolumeSpike: {}, SectorCheckPass (Sector: {}): {}, AggressiveOrdersAllowed: {}. Result: {}",
+        logger.debug("shouldEnterLong for {}: Conditions - InPosition: {}, AboveVWAP: {}, VolumeSpike: {}, Happening: {}, SectorCheckPass (Sector: {}): {}, AggressiveOrdersAllowed: {}. Result: {}",
                 tick.getSymbol(), position.isInPosition(), vwapAnalyzer.isAboveVWAP(tick), volumeAnalyzer.isBreakoutWithSpike(tick),
-                currentSymbolSector, sectorCheckPass, circuitBreakerMonitor.allowAggressiveOrders(tick.getSymbol()), enterLong);
+                volumeSpikeAnalyzer.isHappening(tick.getSymbol()), currentSymbolSector, sectorCheckPass,
+                circuitBreakerMonitor.allowAggressiveOrders(tick.getSymbol()), enterLong);
         return enterLong;
     }
 
@@ -349,12 +371,14 @@ public class TradingEngine {
         boolean enterShort = !position.isInPosition() &&
                 vwapAnalyzer.isBelowVWAP(tick) &&
                 volumeAnalyzer.isBreakdownWithSpike(tick) &&
+                volumeSpikeAnalyzer.isHappening(tick.getSymbol()) && // New volume spike check
                 sectorCheckPass &&
                 circuitBreakerMonitor.allowShortSelling(tick.getSymbol()) &&
                 !darkPoolScanner.hasDarkPoolSupport(tick.getSymbol());
-        logger.debug("shouldEnterShort for {}: Conditions - InPosition: {}, BelowVWAP: {}, VolumeSpike: {}, SectorCheckPass (Sector: {}): {}, ShortSellingAllowed: {}, NoDarkPool: {}. Result: {}",
+        logger.debug("shouldEnterShort for {}: Conditions - InPosition: {}, BelowVWAP: {}, VolumeSpike: {}, Happening: {}, SectorCheckPass (Sector: {}): {}, ShortSellingAllowed: {}, NoDarkPool: {}. Result: {}",
                 tick.getSymbol(), position.isInPosition(), vwapAnalyzer.isBelowVWAP(tick), volumeAnalyzer.isBreakdownWithSpike(tick),
-                currentSymbolSector, sectorCheckPass, circuitBreakerMonitor.allowShortSelling(tick.getSymbol()),
+                volumeSpikeAnalyzer.isHappening(tick.getSymbol()), currentSymbolSector, sectorCheckPass,
+                circuitBreakerMonitor.allowShortSelling(tick.getSymbol()),
                 !darkPoolScanner.hasDarkPoolSupport(tick.getSymbol()), enterShort);
         return enterShort;
     }

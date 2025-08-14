@@ -3,6 +3,8 @@ package com.ibkr.data;
 import com.ib.client.Contract;
 import com.ibkr.AppContext; // Added for AppContext
 import java.util.Map;
+import java.util.Set;
+import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class InstrumentRegistry {
@@ -38,5 +40,14 @@ public class InstrumentRegistry {
 
     public Integer getTickerId(String symbol) {
         return symbolToTickerId.get(symbol);
+    }
+
+    /**
+     * Returns an unmodifiable set of all registered symbols.
+     *
+     * @return A set of all symbol strings.
+     */
+    public Set<String> getAllSymbols() {
+        return Collections.unmodifiableSet(symbolToTickerId.keySet());
     }
 }
