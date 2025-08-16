@@ -102,7 +102,7 @@ public class AppContext {
         this.twsHost = properties.getProperty("tws.host", "127.0.0.1");
         int tempPort;
         try {
-            tempPort = Integer.parseInt(properties.getProperty("tws.port", "7496"));
+            tempPort = Integer.parseInt(properties.getProperty("tws.port", "7497"));
         } catch (NumberFormatException e) {
             logger.error("Invalid format for 'tws.port' in app.properties. Using default 7496.", e);
             tempPort = 7496;
@@ -157,6 +157,7 @@ public class AppContext {
         this.liquidityMonitor = new LiquidityMonitor();
         this.riskManager = new RiskManager(this.liquidityMonitor, this.volatilityAnalyzer);
         this.marketDataHandler = new MarketDataHandler(); // Added instantiation
+        this.tickAggregator = new TickAggregator(this.instrumentRegistry);
 
 
         // Level 1: Depend on Level 0
@@ -178,7 +179,6 @@ public class AppContext {
             this.sectorStrengthAnalyzer,
             this.supportResistanceAnalyzer // Added supportResistanceAnalyzer
         );
-        this.tickAggregator = new TickAggregator(this.instrumentRegistry);
 
         // Create IBOrderExecutor without EClientSocket first
         this.ibOrderExecutor = new IBOrderExecutor(

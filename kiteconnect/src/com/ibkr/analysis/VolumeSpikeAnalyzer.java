@@ -40,7 +40,7 @@ public class VolumeSpikeAnalyzer {
             return;
         }
 
-        long lastTradedQty = tick.getLastTradedQuantity();
+        Long lastTradedQty = (long) tick.getLastTradedQuantity();
         if (lastTradedQty <= 0) {
             return;
         }
