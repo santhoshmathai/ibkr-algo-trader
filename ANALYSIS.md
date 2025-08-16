@@ -31,6 +31,11 @@ This package contains the tools to analyze market conditions, providing the trad
     *   **Market Sentiment**: Calculated over the first 30 minutes. It uses a stricter criteria (e.g., price must be above both the open and the previous day's close) to classify sentiment as "STRONG_UP", "STRONG_DOWN", or "NEUTRAL".
 *   **`SectorStrengthAnalyzer.java`**: This class groups stocks into sectors (e.g., "Technology", "Finance") and calculates the average performance of each sector. This allows a strategy to check if a stock is in a sector that is outperforming the market.
 *   **`SupportResistanceAnalyzer.java`**: This identifies key price levels for a stock. In its current form, it simply uses the previous day's high as a **resistance** level and the previous day's low as a **support** level.
+*   **`VolumeSpikeAnalyzer.java`**: This analyzer detects significant, real-time spikes in trading volume. It works by:
+    1.  Aggregating the traded volume within a short, configurable time interval (e.g., 15 minutes).
+    2.  Projecting what the total volume for the day would be if this pace continues.
+    3.  Comparing this projected daily volume to the stock's historical average daily volume.
+    4.  If the projected volume is significantly higher (e.g., more than double the average), it flags the stock as having a "volume spike". This is a powerful indicator that can be used by strategies to confirm the strength of a price movement or as a primary trading signal itself.
 
 #### 3. `com.ibkr.risk` (Risk Management)
 
