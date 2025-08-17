@@ -13,6 +13,7 @@ import com.ibkr.strategy.orb.OrbStrategy; // +OrbStrategy
 import com.ibkr.strategy.common.OrbStrategyParameters; // +OrbStrategy
 import com.ibkr.strategy.common.VolumeSpikeStrategyParameters;
 import com.ibkr.AppContext; // +OrbStrategy
+import com.ibkr.IBKRApiService;
 import com.ibkr.analysis.IntradayPriceActionAnalyzer; // +PriceAction
 import com.ibkr.models.PriceActionSignal; // +PriceAction
 import com.ibkr.alert.TradeAlertLogger; // +Alerts
@@ -91,9 +92,10 @@ public class TradingEngine {
         this.intradayPriceActionAnalyzer = new IntradayPriceActionAnalyzer(this.appContext); // +PriceAction
 
         // Initialize Volume Spike Analysis components
-        VolumeSpikeStrategyParameters volumeParams = new VolumeSpikeStrategyParameters();
-        this.historicalVolumeService = new HistoricalVolumeService(volumeParams);
-        this.volumeSpikeAnalyzer = new VolumeSpikeAnalyzer(this.historicalVolumeService, volumeParams);
+        IBKRApiService ibkrApiService = new IBKRApiService();
+        ibkrApiService.connect("127.0.0.1", 7497, 0); // Make sure the port is correct
+        this.historicalVolumeService = new HistoricalVolumeService(ibkrApiService);
+        this.volumeSpikeAnalyzer = new VolumeSpikeAnalyzer(this.historicalVolumeService);
 
         // Load historical volume data at startup
         Set<String> symbolsToMonitor = instrumentRegistry.getAllSymbols();
