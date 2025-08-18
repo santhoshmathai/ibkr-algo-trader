@@ -9,6 +9,8 @@ public class TradingSignal {
     private final int quantity;
     private final boolean darkPoolAllowed;
     private final String strategyId;
+    private final OrderType orderType;
+    private final double stopLossPrice;
 
     private TradingSignal(Builder builder) {
         this.instrumentToken = builder.instrumentToken;
@@ -18,6 +20,8 @@ public class TradingSignal {
         this.quantity = builder.quantity;
         this.darkPoolAllowed = builder.darkPoolAllowed;
         this.strategyId = builder.strategyId;
+        this.orderType = builder.orderType;
+        this.stopLossPrice = builder.stopLossPrice;
     }
 
     public static class Builder {
@@ -28,6 +32,8 @@ public class TradingSignal {
         private int quantity;
         private boolean darkPoolAllowed = false;
         private String strategyId = "DEFAULT";
+        private OrderType orderType = OrderType.MARKET; // Default to MARKET
+        private double stopLossPrice = 0.0;
 
         public Builder symbol(String symbol) {
             this.symbol = symbol;
@@ -64,6 +70,16 @@ public class TradingSignal {
             return this;
         }
 
+        public Builder orderType(OrderType orderType) {
+            this.orderType = orderType;
+            return this;
+        }
+
+        public Builder stopLossPrice(double stopLossPrice) {
+            this.stopLossPrice = stopLossPrice;
+            return this;
+        }
+
         public TradingSignal build() {
             return new TradingSignal(this);
         }
@@ -88,8 +104,7 @@ public class TradingSignal {
     public int getQuantity() { return quantity; }
     public boolean isDarkPoolAllowed() { return darkPoolAllowed; }
     public String getStrategyId() { return strategyId; }
-    public long getInstrumentToken() {
-        return instrumentToken;
-    }
-
+    public long getInstrumentToken() { return instrumentToken; }
+    public OrderType getOrderType() { return orderType; }
+    public double getStopLossPrice() { return stopLossPrice; }
 }

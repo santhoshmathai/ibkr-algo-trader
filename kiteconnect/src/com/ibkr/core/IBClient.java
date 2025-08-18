@@ -45,6 +45,10 @@ public class IBClient implements EWrapper {
     private CountDownLatch historicalDataLatch;
     private static final DateTimeFormatter IB_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd  HH:mm:ss");
 
+    // New members for generalized historical data fetching
+    private final Map<Integer, CompletableFuture<List<com.zerodhatech.models.HistoricalData>>> historicalDataFutures = new ConcurrentHashMap<>();
+    private final Map<Integer, List<com.zerodhatech.models.HistoricalData>> historicalDataBuffer = new ConcurrentHashMap<>();
+
 
     public IBClient(AppContext appContext, InstrumentRegistry instrumentRegistry, TickAggregator tickAggregator,
                     TickProcessor tickProcessor, IBOrderExecutor orderExecutor,
@@ -394,16 +398,34 @@ public class IBClient implements EWrapper {
 
     @Override
     public void historicalData(int reqId, Bar bar) {
+        // New generalized logic
+        if (historicalDataFutures.containsKey(reqId)) {
+            logger.debug("Received historical bar for generalized request {}: Date {}, C: {}", reqId, bar.time(), bar.close());
+            List<com.zerodhatech.models.HistoricalData> bars = historicalDataBuffer.computeIfAbsent(reqId, k -> new ArrayList<>());
+            com.zerodhatech.models.HistoricalData historicalData = new com.zerodhatech.models.HistoricalData();
+            // Note: IB's bar.time() can be a date string or epoch seconds depending on formatDate
+            // Assuming formatDate=2 (epoch seconds) for new requests.
+            try {
+                historicalData.timeStamp = bar.time(); // Assuming it's in a format HistoricalData can use or we convert it
+            } catch (Exception e) {
+                logger.error("Could not parse historical bar timestamp: {}", bar.time(), e);
+            }
+            historicalData.open = bar.open();
+            historicalData.high = bar.high();
+            historicalData.low = bar.low();
+            historicalData.close = bar.close();
+            historicalData.volume = bar.volume();
+            bars.add(historicalData);
+            return;
+        }
+
+        // Fallback to existing PDH logic
         logger.info("HistoricalData - ReqId: {}, Symbol: {}, Date: {}, O: {}, H: {}, L: {}, C: {}, Volume: {}",
                 reqId, appContext.getSymbolForHistoricalDataRequest(reqId), bar.time(), bar.open(), bar.high(), bar.low(), bar.close(), bar.volume());
 
         String symbol = appContext.getSymbolForHistoricalDataRequest(reqId);
         if (symbol != null) {
             PreviousDayData pdhData = new PreviousDayData(symbol, bar.high(), bar.low(), bar.close());
-            // Potentially set volume and time if PreviousDayData model supports it and it's useful.
-            // pdhData.setVolume(bar.volume());
-            // pdhData.setTimestamp(bar.time()); // bar.time() is String "yyyyMMdd  HH:mm:ss"
-
             appContext.updatePdhForSymbol(symbol, pdhData);
             logger.info("Updated PDH for {} via historicalData callback: H={}, L={}, C={}", symbol, bar.high(), bar.low(), bar.close());
         } else {
@@ -413,24 +435,32 @@ public class IBClient implements EWrapper {
 
     @Override
     public void historicalDataEnd(int reqId, String startDateStr, String endDateStr) {
-        String symbol = appContext.getSymbolForHistoricalDataRequest(reqId);
-        logger.info("HistoricalDataEnd - ReqId: {}, Symbol: {}, StartDate: {}, EndDate: {}",
-                    reqId, symbol != null ? symbol : "N/A", startDateStr, endDateStr);
-
-        if (symbol != null) {
-            // Optionally, verify if data was actually received for this symbol if needed
-            // For example, check if appContext.getPreviousDayData(symbol) is now populated.
-            if (appContext.getPreviousDayData(symbol) == null) {
-                logger.warn("HistoricalDataEnd received for symbol {}, but no PreviousDayData was populated in AppContext. Possible issue with data retrieval or symbol mapping for reqId {}.", symbol, reqId);
-            }
-        } else {
-            logger.warn("HistoricalDataEnd received for reqId: {} but no symbol was registered for this ID. No action taken to confirm data population.", reqId);
+        // New generalized logic
+        if (historicalDataFutures.containsKey(reqId)) {
+            CompletableFuture<List<com.zerodhatech.models.HistoricalData>> future = historicalDataFutures.get(reqId);
+            List<com.zerodhatech.models.HistoricalData> result = historicalDataBuffer.getOrDefault(reqId, new ArrayList<>());
+            future.complete(result);
+            logger.info("HistoricalDataEnd for generalized request {}. Completed future with {} bars.", reqId, result.size());
+            historicalDataFutures.remove(reqId);
+            historicalDataBuffer.remove(reqId);
+            return;
         }
 
-        // Clean up the reqId from AppContext tracking map
+        // Fallback to existing PDH logic
+        String symbol = appContext.getSymbolForHistoricalDataRequest(reqId);
+        logger.info("HistoricalDataEnd - ReqId: {}, Symbol: {}, StartDate: {}, EndDate: {}",
+                reqId, symbol != null ? symbol : "N/A", startDateStr, endDateStr);
+
+        if (symbol != null) {
+            if (appContext.getPreviousDayData(symbol) == null) {
+                logger.warn("HistoricalDataEnd received for symbol {}, but no PreviousDayData was populated in AppContext.", symbol, reqId);
+            }
+        } else {
+            logger.warn("HistoricalDataEnd received for reqId: {} but no symbol was registered for this ID.", reqId);
+        }
+
         appContext.removeHistoricalDataRequest(reqId);
 
-        // If using a latch for batch requests (like in fetchPreviousDayDataForAllStocks), count it down.
         if (historicalDataLatch != null) {
             historicalDataLatch.countDown();
             logger.debug("Historical data latch countDown for reqId {}. Remaining: {}", reqId, historicalDataLatch.getCount());
@@ -468,6 +498,42 @@ public class IBClient implements EWrapper {
 
         logger.info("Requesting Previous Day Data for {}({}): ReqId={}", symbol, contract.conid(), reqId);
         clientSocket.reqHistoricalData(reqId, contract, endDateTime, durationStr, barSizeSetting, whatToShow, useRTH, formatDate, false, chartOptions);
+    }
+
+    /**
+     * A generalized method to request historical data.
+     * This is designed to be called by services like HistoricalDataService.
+     * It returns a CompletableFuture that will be completed with the list of historical bars.
+     *
+     * @param contract       The contract to request data for.
+     * @param endDateTime    The end date/time of the request. Format: "yyyyMMdd HH:mm:ss".
+     * @param durationStr    The duration of the data to fetch (e.g., "1 D", "1 M").
+     * @param barSizeSetting The size of the bars (e.g., "1 day", "5 mins").
+     * @param whatToShow     The type of data (e.g., "TRADES", "MIDPOINT").
+     * @param useRTH         1 to use regular trading hours, 0 otherwise.
+     * @param formatDate     1 for yyyyMMdd HH:mm:ss, 2 for epoch seconds.
+     * @return A CompletableFuture which will contain the list of HistoricalData bars.
+     */
+    public CompletableFuture<List<com.zerodhatech.models.HistoricalData>> requestHistoricalData(
+            Contract contract, String endDateTime, String durationStr, String barSizeSetting,
+            String whatToShow, int useRTH, int formatDate) {
+
+        if (!clientSocket.isConnected()) {
+            logger.error("Cannot request historical data for {}: Not connected.", contract.symbol());
+            return CompletableFuture.failedFuture(new IllegalStateException("Not connected to TWS."));
+        }
+
+        int reqId = appContext.getNextRequestId();
+        CompletableFuture<List<com.zerodhatech.models.HistoricalData>> future = new CompletableFuture<>();
+        historicalDataFutures.put(reqId, future);
+        historicalDataBuffer.put(reqId, new ArrayList<>()); // Initialize buffer
+
+        logger.info("Dispatching generalized historical data request for {}: ReqId={}, Duration={}, BarSize={}",
+                contract.symbol(), reqId, durationStr, barSizeSetting);
+
+        clientSocket.reqHistoricalData(reqId, contract, endDateTime, durationStr, barSizeSetting, whatToShow, useRTH, formatDate, false, null);
+
+        return future;
     }
 
 

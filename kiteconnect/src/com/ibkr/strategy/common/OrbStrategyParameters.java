@@ -1,106 +1,58 @@
 package com.ibkr.strategy.common;
 
-import java.time.LocalTime;
-
+/**
+ * Parameters for the revised Opening Range Breakout (ORB) strategy.
+ */
 public class OrbStrategyParameters {
 
-    // ORB Definition
-    private final LocalTime orbStartTime; // e.g., 9:15 AM
-    private final LocalTime orbEndTime;   // e.g., 9:30 AM
-    private final int orbDurationMinutes; // e.g., 15
+    private final int orbTimeframeMinutes;
+    private final double stopLossAtrPercentage;
+    private final double riskPerTrade;
+    private final double maxLeverage;
 
-    // Breakout Conditions
-    private final LocalTime tradeStartTime; // e.g., 9:30 AM (when to start looking for breakouts)
-    private final double volumeSpikeMultiplier; // e.g., 1.5 for current volume > 1.5 * avg_vol
-    private final int volumeAverageLookbackCandles; // e.g., 5 candles for average volume
-    private final double minBidAskRatio; // e.g., 1.5 for TotalBidQty / TotalAskQty
-
-    // Consolidation Filter
-    private final LocalTime consolidationStartTime; // e.g., 9:30 AM
-    private final LocalTime consolidationEndTime;   // e.g., 9:45 AM
-    private final double consolidationMaxRangePercent; // e.g., 0.005 for 0.5%
-
-    // Retest Condition
-    private final double retestProximityPercent; // e.g., 0.001 for 0.1% proximity to ORB high
-
-    // Default constructor with typical values
+    /**
+     * Default constructor with typical values.
+     * - 5-minute opening range.
+     * - Stop loss at 10% of 14-day ATR.
+     * - Risk 1% of capital per trade.
+     * - Max leverage of 4x.
+     */
     public OrbStrategyParameters() {
-        this.orbStartTime = LocalTime.of(9, 15);
-        this.orbEndTime = LocalTime.of(9, 30);
-        this.orbDurationMinutes = 15;
-
-        this.tradeStartTime = LocalTime.of(9, 30);
-        this.volumeSpikeMultiplier = 1.5;
-        this.volumeAverageLookbackCandles = 5;
-        this.minBidAskRatio = 1.5;
-
-        this.consolidationStartTime = LocalTime.of(9, 30);
-        this.consolidationEndTime = LocalTime.of(9, 45);
-        this.consolidationMaxRangePercent = 0.005; // 0.5%
-
-        this.retestProximityPercent = 0.001; // 0.1% for retest proximity
+        this.orbTimeframeMinutes = 5;
+        this.stopLossAtrPercentage = 0.10; // 10% of ATR
+        this.riskPerTrade = 0.01; // 1% of capital
+        this.maxLeverage = 4.0; // 4x
     }
 
-    // Constructor allowing full customization
-    public OrbStrategyParameters(LocalTime orbStartTime, LocalTime orbEndTime, int orbDurationMinutes,
-                                 LocalTime tradeStartTime, double volumeSpikeMultiplier, int volumeAverageLookbackCandles,
-                                 double minBidAskRatio, LocalTime consolidationStartTime, LocalTime consolidationEndTime,
-                                 double consolidationMaxRangePercent, double retestProximityPercent) {
-        this.orbStartTime = orbStartTime;
-        this.orbEndTime = orbEndTime;
-        this.orbDurationMinutes = orbDurationMinutes;
-        this.tradeStartTime = tradeStartTime;
-        this.volumeSpikeMultiplier = volumeSpikeMultiplier;
-        this.volumeAverageLookbackCandles = volumeAverageLookbackCandles;
-        this.minBidAskRatio = minBidAskRatio;
-        this.consolidationStartTime = consolidationStartTime;
-        this.consolidationEndTime = consolidationEndTime;
-        this.consolidationMaxRangePercent = consolidationMaxRangePercent;
-        this.retestProximityPercent = retestProximityPercent;
+    /**
+     * Constructor allowing full customization of the ORB strategy parameters.
+     *
+     * @param orbTimeframeMinutes   The duration of the opening range in minutes (e.g., 5, 15, 30).
+     * @param stopLossAtrPercentage The percentage of ATR to set the stop loss at (e.g., 0.1 for 10%).
+     * @param riskPerTrade          The fraction of capital to risk per trade (e.g., 0.01 for 1%).
+     * @param maxLeverage           The maximum leverage to use for position sizing.
+     */
+    public OrbStrategyParameters(int orbTimeframeMinutes, double stopLossAtrPercentage, double riskPerTrade, double maxLeverage) {
+        this.orbTimeframeMinutes = orbTimeframeMinutes;
+        this.stopLossAtrPercentage = stopLossAtrPercentage;
+        this.riskPerTrade = riskPerTrade;
+        this.maxLeverage = maxLeverage;
     }
 
     // Getters
-    public LocalTime getOrbStartTime() {
-        return orbStartTime;
+    public int getOrbTimeframeMinutes() {
+        return orbTimeframeMinutes;
     }
 
-    public LocalTime getOrbEndTime() {
-        return orbEndTime;
+    public double getStopLossAtrPercentage() {
+        return stopLossAtrPercentage;
     }
 
-    public int getOrbDurationMinutes() {
-        return orbDurationMinutes;
+    public double getRiskPerTrade() {
+        return riskPerTrade;
     }
 
-    public LocalTime getTradeStartTime() {
-        return tradeStartTime;
-    }
-
-    public double getVolumeSpikeMultiplier() {
-        return volumeSpikeMultiplier;
-    }
-
-    public int getVolumeAverageLookbackCandles() {
-        return volumeAverageLookbackCandles;
-    }
-
-    public double getMinBidAskRatio() {
-        return minBidAskRatio;
-    }
-
-    public LocalTime getConsolidationStartTime() {
-        return consolidationStartTime;
-    }
-
-    public LocalTime getConsolidationEndTime() {
-        return consolidationEndTime;
-    }
-
-    public double getConsolidationMaxRangePercent() {
-        return consolidationMaxRangePercent;
-    }
-
-    public double getRetestProximityPercent() {
-        return retestProximityPercent;
+    public double getMaxLeverage() {
+        return maxLeverage;
     }
 }

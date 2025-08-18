@@ -5,458 +5,175 @@ import com.ib.client.EJavaSignal;
 import com.ib.client.EReaderSignal;
 import com.ibkr.analysis.MarketSentimentAnalyzer;
 import com.ibkr.analysis.SectorStrengthAnalyzer;
-import com.ibkr.analysis.SupportResistanceAnalyzer; // Added import
+import com.ibkr.analysis.SupportResistanceAnalyzer;
 import com.ibkr.core.IBClient;
 import com.ibkr.core.IBConnectionManager;
 import com.ibkr.core.TradingEngine;
 import com.ibkr.data.InstrumentRegistry;
 import com.ibkr.data.TickAggregator;
-import com.ibkr.indicators.VWAPAnalyzer;
-import com.ibkr.indicators.VolumeAnalyzer;
 import com.ibkr.liquidity.DarkPoolScanner;
 import com.ibkr.risk.LiquidityMonitor;
-import com.ibkr.risk.RiskManager;
-import com.ibkr.risk.VolatilityAnalyzer;
 import com.ibkr.safeguards.CircuitBreakerMonitor;
-import com.ibkr.signal.BreakoutSignalGenerator;
 import com.ibkr.strategy.TickProcessor;
 import com.ibkr.data.MarketDataHandler;
-import com.ibkr.models.PreviousDayData; // Added
+import com.ibkr.models.PreviousDayData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import java.io.FileInputStream;
-import java.io.IOException; // Added
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
-import java.time.ZonedDateTime; // Added
-import java.time.ZoneId; // Added
-import java.time.LocalTime; // Added
-import java.time.DayOfWeek; // Added
+import java.time.ZonedDateTime;
+import java.time.ZoneId;
+import java.time.LocalTime;
+import java.time.DayOfWeek;
 import java.util.concurrent.atomic.AtomicInteger;
-
 
 public class AppContext {
     private static final Logger logger = LoggerFactory.getLogger(AppContext.class);
     private final AtomicInteger nextRequestId = new AtomicInteger(1001);
 
-    // Core Data and Client Infrastructure
+    // Core Components
     private final InstrumentRegistry instrumentRegistry;
     private final TickAggregator tickAggregator;
     private final IBConnectionManager ibConnectionManager;
-    // private final EClientSocket eClientSocket; // Removed, will get from IBClient
-    // private final EReaderSignal eReaderSignal; // Removed, will get from IBClient
-    private final EClientSocket clientSocket; // Field to store the EClientSocket from IBClient
+    private final EClientSocket clientSocket;
     private final EReaderSignal readerSignal;
     private final IBOrderExecutor ibOrderExecutor;
     private final IBClient ibClient;
-    private final MarketDataHandler marketDataHandler; // Added
+    private final MarketDataHandler marketDataHandler;
+    private final TradingEngine tradingEngine;
+    private final TickProcessor tickProcessor;
 
-    // Analyzers
+    // Analyzers needed by components other than the old TradingEngine logic
     private final MarketSentimentAnalyzer marketSentimentAnalyzer;
-    private final SectorStrengthAnalyzer sectorStrengthAnalyzer;
-    private final SupportResistanceAnalyzer supportResistanceAnalyzer; // Added field
-    private final VWAPAnalyzer vwapAnalyzer;
-    private final VolumeAnalyzer volumeAnalyzer;
-    private final VolatilityAnalyzer volatilityAnalyzer;
+    private final SupportResistanceAnalyzer supportResistanceAnalyzer;
 
-    // Liquidity and Safeguards
+    // Liquidity and Safeguards that are still potentially useful or needed by IBOrderExecutor
     private final CircuitBreakerMonitor circuitBreakerMonitor;
     private final DarkPoolScanner darkPoolScanner;
     private final LiquidityMonitor liquidityMonitor;
 
-    // Risk and Signal Generation
-    private final RiskManager riskManager;
-    private final BreakoutSignalGenerator breakoutSignalGenerator;
-
-    // Strategy and Processing
-    private final TradingEngine tradingEngine;
-    private final TickProcessor tickProcessor;
 
     private final Set<String> top100USStocks;
-    private final Map<String, PreviousDayData> previousDayDataMap = new ConcurrentHashMap<>(); // Initialized
-    // Map to track historical data request IDs to symbols
-    private final Map<Integer, String> historicalDataReqIdToSymbol = new ConcurrentHashMap<>(); // +PDH Fetch
+    private final Map<String, PreviousDayData> previousDayDataMap = new ConcurrentHashMap<>();
+    private final Map<Integer, String> historicalDataReqIdToSymbol = new ConcurrentHashMap<>();
 
     // TWS Connection Parameters
     private final String twsHost;
     private final int twsPort;
     private final int twsClientId;
 
-    // Market Sentiment Analyzer Config
-    private final int openingObservationMinutes;
-
     public AppContext() {
-        // Configuration Data
         Properties properties = new Properties();
-        String propertiesFileName = "app.properties";
-        try (InputStream inputStream = new FileInputStream(propertiesFileName)) {
+        try (InputStream inputStream = new FileInputStream("app.properties")) {
             properties.load(inputStream);
         } catch (IOException e) {
-            logger.error("Failed to load {} in AppContext constructor. Error: {}. Using defaults for TWS config.", propertiesFileName, e.getMessage(), e);
-            // Properties will be empty, defaults will be used.
+            logger.error("Failed to load app.properties. Using defaults.", e);
         }
 
         this.twsHost = properties.getProperty("tws.host", "127.0.0.1");
-        int tempPort;
-        try {
-            tempPort = Integer.parseInt(properties.getProperty("tws.port", "7497"));
-        } catch (NumberFormatException e) {
-            logger.error("Invalid format for 'tws.port' in app.properties. Using default 7496.", e);
-            tempPort = 7496;
-        }
-        this.twsPort = tempPort;
+        this.twsPort = Integer.parseInt(properties.getProperty("tws.port", "7497"));
+        this.twsClientId = Integer.parseInt(properties.getProperty("tws.clientId", "0"));
+        int openingObservationMinutes = Integer.parseInt(properties.getProperty("market.opening.observation.minutes", "15"));
 
-        int tempClientId;
-        try {
-            tempClientId = Integer.parseInt(properties.getProperty("tws.clientId", "0"));
-        } catch (NumberFormatException e) {
-            logger.error("Invalid format for 'tws.clientId' in app.properties. Using default 0.", e);
-            tempClientId = 0;
-        }
-        this.twsClientId = tempClientId;
-        logger.info("Loaded TWS connection params: Host={}, Port={}, ClientId={}", this.twsHost, this.twsPort, this.twsClientId);
+        this.top100USStocks = loadTop100USStocks(properties);
 
-        int tempOpeningObservationMinutes;
-        try {
-            tempOpeningObservationMinutes = Integer.parseInt(properties.getProperty("market.opening.observation.minutes", "15"));
-        } catch (NumberFormatException e) {
-            logger.error("Invalid format for 'market.opening.observation.minutes' in app.properties. Using default 15.", e);
-            tempOpeningObservationMinutes = 15;
-        }
-        this.openingObservationMinutes = tempOpeningObservationMinutes;
-        logger.info("Loaded Market Opening Observation Minutes: {}", this.openingObservationMinutes);
+        // --- Component Initialization ---
 
-        LocalTime actualMarketOpenTime = LocalTime.of(9, 30); // Default ET market open
-
-        this.top100USStocks = loadTop100USStocks(properties); // Pass loaded properties
-        Map<String, List<String>> sectorToStocksMap = loadSectorToStocksMap(properties); // Pass loaded properties
-        Map<String, String> symbolToSectorMap = loadSymbolToSectorMap(sectorToStocksMap); // Pass the loaded map
-
-        // Level 0: No dependencies or only external config
+        // Level 0: Components with no internal dependencies
         this.instrumentRegistry = new InstrumentRegistry(this);
-        this.marketSentimentAnalyzer = new MarketSentimentAnalyzer(
-            this,
-            this.top100USStocks,
-            this.openingObservationMinutes,
-            actualMarketOpenTime
-        );
-        this.supportResistanceAnalyzer = new SupportResistanceAnalyzer(this); // Added instantiation
-        // Ensure SectorStrengthAnalyzer gets valid, though possibly empty, maps
-        this.sectorStrengthAnalyzer = new SectorStrengthAnalyzer(
-            sectorToStocksMap != null ? sectorToStocksMap : new HashMap<>(),
-            symbolToSectorMap != null ? symbolToSectorMap : new HashMap<>()
-        );
-        this.vwapAnalyzer = new VWAPAnalyzer();
-        this.volumeAnalyzer = new VolumeAnalyzer();
-        this.volatilityAnalyzer = new VolatilityAnalyzer();
+        this.marketDataHandler = new MarketDataHandler();
+        this.tickAggregator = new TickAggregator(this.instrumentRegistry);
+        this.supportResistanceAnalyzer = new SupportResistanceAnalyzer(this);
+        this.marketSentimentAnalyzer = new MarketSentimentAnalyzer(this, this.top100USStocks, openingObservationMinutes, LocalTime.of(9, 30));
         this.circuitBreakerMonitor = new CircuitBreakerMonitor();
         this.darkPoolScanner = new DarkPoolScanner();
         this.liquidityMonitor = new LiquidityMonitor();
-        this.riskManager = new RiskManager(this.liquidityMonitor, this.volatilityAnalyzer);
-        this.marketDataHandler = new MarketDataHandler(); // Added instantiation
-        this.tickAggregator = new TickAggregator(this.instrumentRegistry);
 
+        // Level 1: Components that depend on Level 0
+        this.ibOrderExecutor = new IBOrderExecutor(this.circuitBreakerMonitor, this.darkPoolScanner, this.instrumentRegistry);
+        this.tradingEngine = new TradingEngine(this, this.ibOrderExecutor);
 
-        // Level 1: Depend on Level 0
-        this.tradingEngine = new TradingEngine(
-            this, // Pass AppContext itself
-            this.vwapAnalyzer,
-            this.volumeAnalyzer,
-            this.circuitBreakerMonitor,
-            this.darkPoolScanner,
-            this.marketSentimentAnalyzer,
-            this.sectorStrengthAnalyzer,
-            this.instrumentRegistry,
-            this.tickAggregator // Pass TickAggregator
-        );
-        this.breakoutSignalGenerator = new BreakoutSignalGenerator(
-            this.volatilityAnalyzer,
-            this.vwapAnalyzer,
-            this.volumeAnalyzer,
-            this.sectorStrengthAnalyzer,
-            this.supportResistanceAnalyzer // Added supportResistanceAnalyzer
-        );
+        // TickProcessor is now simplified, it just needs to know about the engine to pass it bars.
+        // The nulls are placeholders for obsolete dependencies (breakoutSignalGenerator, riskManager).
+        this.tickProcessor = new TickProcessor(null, null, this.tradingEngine, this.ibOrderExecutor, this);
 
-        // Create IBOrderExecutor without EClientSocket first
-        this.ibOrderExecutor = new IBOrderExecutor(
-            this.circuitBreakerMonitor, this.darkPoolScanner, this.instrumentRegistry
-        );
+        // Level 2: IBClient depends on TickProcessor
+        this.ibClient = new IBClient(this, this.instrumentRegistry, this.tickAggregator, this.tickProcessor, this.ibOrderExecutor, this.marketDataHandler);
 
-        // Create IBClient (EWrapper)
-        this.tickProcessor = new TickProcessor(
-            this.breakoutSignalGenerator, this.riskManager, this.tradingEngine, this.ibOrderExecutor, this // Injected AppContext
-        );
-        this.ibClient = new IBClient(
-            this, // Pass AppContext
-            this.instrumentRegistry,
-            this.tickAggregator,
-            this.tickProcessor,
-            this.ibOrderExecutor,
-            this.marketDataHandler
-        );
-
-        // EClientSocket and EReaderSignal are created inside IBClient. Get them.
+        // Level 3: Components that depend on IBClient
         this.clientSocket = this.ibClient.getClientSocket();
-        this.readerSignal = this.ibClient.getReaderSignal(); // Assuming getReaderSignal() exists per plan
-
-        // Now provide EClientSocket to IBOrderExecutor
+        this.readerSignal = this.ibClient.getReaderSignal();
         this.ibOrderExecutor.setClientSocket(this.clientSocket);
-
-        // Create IBConnectionManager and provide it to IBClient
         this.ibConnectionManager = new IBConnectionManager(this.clientSocket);
         this.ibClient.setConnectionManager(this.ibConnectionManager);
 
-        // Removed historical data fetching from here. It will be initiated from IBAppMain.
+        // Final Step: Initialize TradingEngine services that required the IBClient, breaking the circular dependency.
+        this.tradingEngine.initializeServices(this.ibClient, this.instrumentRegistry);
+
+        logger.info("AppContext initialized successfully with new refactored flow.");
     }
 
-    // Modified to accept Properties object
     private Set<String> loadTop100USStocks(Properties properties) {
-        Set<String> stocks = new HashSet<>();
-        String stocksProperty = properties.getProperty("us.stocks.top100");
-
-        if (stocksProperty != null && !stocksProperty.trim().isEmpty()) {
-                stocks.addAll(Arrays.asList(stocksProperty.split(",")));
-                logger.info("Loaded {} stock symbols from app.properties (us.stocks.top100).", stocks.size());
-            } else {
-                logger.warn("'us.stocks.top100' property is missing or empty in app.properties. Using empty set.");
-                // Optionally, return a default minimal set:
-                // return Set.of("AAPL", "MSFT");
-            }
-        // Removed IOException catch as Properties object is passed in
-        return stocks;
+        String stocksProperty = properties.getProperty("us.stocks.top100", "");
+        return new HashSet<>(Arrays.asList(stocksProperty.split(",")));
     }
 
-    // Modified to accept Properties object
-    private Map<String, List<String>> loadSectorToStocksMap(Properties properties) {
-        Map<String, List<String>> sectorToStocksMap = new HashMap<>();
-        logger.info("Loading sector to stocks map from app.properties");
+    // --- Getters for major components ---
+    public IBClient getIbClient() { return ibClient; }
+    public Set<String> getTop100USStocks() { return top100USStocks; }
+    public IBConnectionManager getIbConnectionManager() { return ibConnectionManager; }
+    public InstrumentRegistry getInstrumentRegistry() { return instrumentRegistry; }
+    public TickAggregator getTickAggregator() { return tickAggregator; }
+    public TickProcessor getTickProcessor() { return tickProcessor; }
+    public IBOrderExecutor getIbOrderExecutor() { return ibOrderExecutor; }
+    public TradingEngine getTradingEngine() { return tradingEngine; }
+    public SupportResistanceAnalyzer getSupportResistanceAnalyzer() { return supportResistanceAnalyzer; }
+    public MarketSentimentAnalyzer getMarketSentimentAnalyzer() { return marketSentimentAnalyzer; }
 
-        for (String propertyName : properties.stringPropertyNames()) {
-            if (propertyName.startsWith("sector.") && propertyName.endsWith(".stocks")) {
-                // Extract sector name: sector.TECHNOLOGY.stocks -> TECHNOLOGY
-                String sectorName = propertyName.substring("sector.".length(), propertyName.lastIndexOf(".stocks"));
-                String stocksListStr = properties.getProperty(propertyName);
-                if (stocksListStr != null && !stocksListStr.trim().isEmpty()) {
-                    List<String> stocksInSector = Arrays.asList(stocksListStr.split(","))
-                            .stream()
-                            .map(String::trim)
-                            .filter(s -> !s.isEmpty())
-                            .collect(Collectors.toList());
-                    if (!stocksInSector.isEmpty()) {
-                        sectorToStocksMap.put(sectorName.toUpperCase(), stocksInSector);
-                        logger.debug("Loaded sector {}: {} stocks", sectorName.toUpperCase(), stocksInSector.size());
-                    } else {
-                        logger.warn("Sector {} defined in app.properties but has no stocks listed.", sectorName.toUpperCase());
-                        sectorToStocksMap.put(sectorName.toUpperCase(), Collections.emptyList());
-                    }
-                } else {
-                    logger.warn("Sector {} has empty stock list in app.properties.", sectorName.toUpperCase());
-                    sectorToStocksMap.put(sectorName.toUpperCase(), Collections.emptyList());
-                }
-            }
-        }
-        // Removed IOException catch as Properties object is passed in
-        logger.info("Loaded {} sectors from properties file.", sectorToStocksMap.size());
-        return sectorToStocksMap;
-    }
-
-    private Map<String, String> loadSymbolToSectorMap(Map<String, List<String>> sectorToStocksMap) {
-        Map<String, String> symbolToSectorMap = new HashMap<>();
-        if (sectorToStocksMap == null || sectorToStocksMap.isEmpty()) {
-            logger.warn("Sector-to-stocks map is empty. Cannot build symbol-to-sector map.");
-            return symbolToSectorMap;
-        }
-        logger.info("Building symbol to sector map...");
-        for (Map.Entry<String, List<String>> entry : sectorToStocksMap.entrySet()) {
-            String sector = entry.getKey();
-            List<String> stocksInSector = entry.getValue();
-            if (stocksInSector != null) {
-                for (String symbol : stocksInSector) {
-                    if (symbolToSectorMap.containsKey(symbol)) {
-                        logger.warn("Symbol {} is listed in multiple sectors. Overwriting with sector {}. Previous sector: {}",
-                                symbol, sector, symbolToSectorMap.get(symbol));
-                    }
-                    symbolToSectorMap.put(symbol, sector);
-                }
-            }
-        }
-        logger.info("Symbol to sector map built with {} entries.", symbolToSectorMap.size());
-        return symbolToSectorMap;
-    }
-
-    // Getter methods for components needed by IBAppMain or other external access
-    public IBClient getIbClient() {
-        return ibClient;
-    }
-
-    public Set<String> getTop100USStocks() { // Added getter for the configured stocks
-        return top100USStocks;
-    }
-
-    // Expose other components if needed by IBAppMain or tests
-    public IBConnectionManager getIbConnectionManager() {
-        return ibConnectionManager;
-    }
-
-    public EClientSocket getClientSocket() {
-        return clientSocket;
-    }
-
-    public EReaderSignal getReaderSignal() {
-        return readerSignal;
-    }
-
-    public InstrumentRegistry getInstrumentRegistry() {
-        return instrumentRegistry;
-    }
-
-    public TickAggregator getTickAggregator() {
-        return tickAggregator;
-    }
-
-    public TickProcessor getTickProcessor() {
-        return tickProcessor;
-    }
-
-    public IBOrderExecutor getIbOrderExecutor() {
-        return ibOrderExecutor;
-    }
-
-    public PreviousDayData getPreviousDayData(String symbol) {
-        return previousDayDataMap.get(symbol);
-    }
-
-    public boolean isMarketInOpeningWindow() {
-        try {
-            ZoneId marketTimeZone = ZoneId.of("America/New_York");
-            ZonedDateTime marketTime = ZonedDateTime.now(marketTimeZone);
-            DayOfWeek day = marketTime.getDayOfWeek();
-
-            if (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY) {
-                logger.trace("Market is closed on weekends. Not in opening window.");
-                return false; // Market closed on weekends
-            }
-
-            LocalTime marketOpen = LocalTime.of(9, 30);
-            LocalTime openingWindowEnd = LocalTime.of(10, 0); // First 30 minutes
-
-            LocalTime currentTimeET = marketTime.toLocalTime();
-
-            boolean isInWindow = !currentTimeET.isBefore(marketOpen) && currentTimeET.isBefore(openingWindowEnd);
-
-            logger.debug("Current ET: {}, Market Open: {}, Window End: {}. IsInOpeningWindow: {}",
-                        currentTimeET, marketOpen, openingWindowEnd, isInWindow);
-            return isInWindow;
-
-        } catch (Exception e) {
-            logger.error("Error checking market opening window: {}", e.getMessage(), e);
-            return false; // Default to false on error
-        }
-    }
-
-    public int getNextRequestId() {
-        return nextRequestId.getAndIncrement();
-    }
-
+    // --- Other methods ---
+    public int getNextRequestId() { return nextRequestId.getAndIncrement(); }
     public String getTwsHost() { return twsHost; }
     public int getTwsPort() { return twsPort; }
     public int getTwsClientId() { return twsClientId; }
 
-    public void setPreviousDayDataMap(Map<String, PreviousDayData> previousDayDataMap) {
-        this.previousDayDataMap.clear(); // Clear old data
-        if (previousDayDataMap != null) {
-            this.previousDayDataMap.putAll(previousDayDataMap);
+    public PreviousDayData getPreviousDayData(String symbol) { return previousDayDataMap.get(symbol); }
+    public void setPreviousDayDataMap(Map<String, PreviousDayData> dataMap) {
+        this.previousDayDataMap.clear();
+        if (dataMap != null) {
+            this.previousDayDataMap.putAll(dataMap);
         }
-        logger.info("AppContext.previousDayDataMap updated. Size: {}", this.previousDayDataMap.size());
     }
 
-    public Map<String, PreviousDayData> getPreviousDayDataMap() { // Getter might be useful for IBClient
-        return this.previousDayDataMap;
+    public void registerHistoricalDataRequest(int reqId, String symbol) { historicalDataReqIdToSymbol.put(reqId, symbol); }
+    public String getSymbolForHistoricalDataRequest(int reqId) { return historicalDataReqIdToSymbol.get(reqId); }
+    public void removeHistoricalDataRequest(int reqId) { historicalDataReqIdToSymbol.remove(reqId); }
+
+    public void updatePdhForSymbol(String symbol, PreviousDayData pdhData) {
+        if (symbol == null || pdhData == null) return;
+        previousDayDataMap.put(symbol, pdhData);
+        // The old TradingEngine's initializeStrategyForSymbol is no longer needed here.
+        // The new flow handles state reset differently (e.g., in runPreMarketScreening).
+    }
+
+    public double getAccountCapital() {
+        // TODO: Replace with dynamic value from IB account updates.
+        return 100000.00;
     }
 
     public void shutdown() {
         logger.info("Shutting down AppContext...");
-
-        // Shutdown IBClient first to stop market data flow and order processing
         if (this.ibClient != null) {
-            logger.info("Shutting down IBClient from AppContext...");
             this.ibClient.shutdown();
-        } else {
-            logger.warn("IBClient was null in AppContext during shutdown.");
         }
-
-        // Shutdown MarketDataHandler to flush any pending writes
         if (this.marketDataHandler != null) {
-            logger.info("Shutting down MarketDataHandler from AppContext...");
             this.marketDataHandler.shutdown();
-        } else {
-            logger.warn("MarketDataHandler was null in AppContext during shutdown.");
         }
-
-        // Shutdown other resources if any were added that need it
-        // e.g., other ExecutorServices managed by AppContext directly
-
         logger.info("AppContext shutdown process completed.");
-    }
-    // Add other getters as necessary
-    public MarketSentimentAnalyzer getMarketSentimentAnalyzer() {
-        return marketSentimentAnalyzer;
-    }
-
-    public SupportResistanceAnalyzer getSupportResistanceAnalyzer() {
-        return supportResistanceAnalyzer;
-    }
-
-    public VolatilityAnalyzer getVolatilityAnalyzer() {
-        return volatilityAnalyzer;
-    }
-
-    public TradingEngine getTradingEngine() { // Added getter for TradingEngine
-        return tradingEngine;
-    }
-
-    // Methods for PDH data handling specific to historical requests
-    public void registerHistoricalDataRequest(int reqId, String symbol) {
-        if (symbol == null || symbol.trim().isEmpty()) {
-            logger.warn("Attempted to register historical data request with null or empty symbol for reqId: {}", reqId);
-            return;
-        }
-        historicalDataReqIdToSymbol.put(reqId, symbol);
-        logger.debug("Registered historical data request: reqId={}, symbol={}", reqId, symbol);
-    }
-
-    public String getSymbolForHistoricalDataRequest(int reqId) {
-        String symbol = historicalDataReqIdToSymbol.get(reqId);
-        // logger.trace("Symbol for historical data reqId {}: {}", reqId, symbol); // Can be noisy
-        return symbol;
-    }
-
-    public void removeHistoricalDataRequest(int reqId) {
-        String removedSymbol = historicalDataReqIdToSymbol.remove(reqId);
-        if (removedSymbol != null) {
-            logger.debug("Removed historical data request from tracking: reqId={}, symbol={}", reqId, removedSymbol);
-        } else {
-            // logger.warn("Attempted to remove non-existent historical data request for reqId: {}", reqId);
-        }
-    }
-
-    public void updatePdhForSymbol(String symbol, PreviousDayData pdhData) {
-        if (symbol == null || symbol.trim().isEmpty() || pdhData == null) {
-            logger.warn("Cannot update PDH for symbol '{}': invalid symbol or pdhData is null.", symbol);
-            return;
-        }
-        previousDayDataMap.put(symbol, pdhData);
-        logger.info("Updated PDH data for symbol: {}. High: {}, Low: {}, Close: {}",
-            symbol, pdhData.getPreviousHigh(), pdhData.getPreviousLow(), pdhData.getPreviousClose());
-
-        // After updating PDH in AppContext, also inform TradingEngine
-        if (this.tradingEngine != null) {
-            this.tradingEngine.initializeStrategyForSymbol(symbol, pdhData);
-        } else {
-            logger.warn("TradingEngine is null in AppContext. Cannot initialize strategies for symbol {} after PDH update.", symbol);
-        }
     }
 }

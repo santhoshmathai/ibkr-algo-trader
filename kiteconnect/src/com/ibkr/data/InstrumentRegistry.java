@@ -42,6 +42,14 @@ public class InstrumentRegistry {
         return symbolToTickerId.get(symbol);
     }
 
+    public Contract getContractBySymbol(String symbol) {
+        Integer tickerId = getTickerId(symbol);
+        if (tickerId != null) {
+            return getContract(tickerId);
+        }
+        return null;
+    }
+
     /**
      * Returns an unmodifiable set of all registered symbols.
      *
