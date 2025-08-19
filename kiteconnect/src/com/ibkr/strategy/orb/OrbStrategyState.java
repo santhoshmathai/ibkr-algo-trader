@@ -24,6 +24,11 @@ public class OrbStrategyState {
 
     // Data passed from screener
     public double atr14day = 0.0;
+    public double avgOpeningRangeVolume14day = 0.0; // New field for 14-day average ORB volume
+
+    // Calculated values
+    public double relativeVolume = 0.0; // New field for the calculated relative volume
+
 
     // Trade Management State
     public boolean stopOrderPlaced = false;
@@ -46,6 +51,8 @@ public class OrbStrategyState {
         this.candleDirection = CandleDirection.UNDEFINED;
         this.rangeDefined = false;
         this.atr14day = 0.0;
+        this.avgOpeningRangeVolume14day = 0.0;
+        this.relativeVolume = 0.0;
         this.stopOrderPlaced = false;
     }
 

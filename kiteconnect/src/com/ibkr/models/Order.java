@@ -6,6 +6,7 @@ public class Order {
     private String orderId;
     private String symbol;
     private TradeAction action;
+    private OrderType orderType;
     private boolean isDarkPoolAllowed;
 
     public boolean isDarkPoolAllowed() {
@@ -74,6 +75,14 @@ public class Order {
 
     public void setRejectionReason(String rejectionReason) {
         this.rejectionReason = rejectionReason;
+    }
+
+    public OrderType getOrderType() {
+        return orderType;
+    }
+
+    public void setOrderType(OrderType orderType) {
+        this.orderType = orderType;
     }
 
     private OrderStatus status;

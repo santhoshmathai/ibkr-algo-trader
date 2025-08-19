@@ -11,6 +11,8 @@ public class TradingSignal {
     private final String strategyId;
     private final OrderType orderType;
     private final double stopLossPrice;
+    private final double relativeVolume;
+
 
     private TradingSignal(Builder builder) {
         this.instrumentToken = builder.instrumentToken;
@@ -22,6 +24,7 @@ public class TradingSignal {
         this.strategyId = builder.strategyId;
         this.orderType = builder.orderType;
         this.stopLossPrice = builder.stopLossPrice;
+        this.relativeVolume = builder.relativeVolume;
     }
 
     public static class Builder {
@@ -34,6 +37,8 @@ public class TradingSignal {
         private String strategyId = "DEFAULT";
         private OrderType orderType = OrderType.MARKET; // Default to MARKET
         private double stopLossPrice = 0.0;
+        private double relativeVolume = 0.0;
+
 
         public Builder symbol(String symbol) {
             this.symbol = symbol;
@@ -80,6 +85,11 @@ public class TradingSignal {
             return this;
         }
 
+        public Builder relativeVolume(double relativeVolume) {
+            this.relativeVolume = relativeVolume;
+            return this;
+        }
+
         public TradingSignal build() {
             return new TradingSignal(this);
         }
@@ -107,4 +117,5 @@ public class TradingSignal {
     public long getInstrumentToken() { return instrumentToken; }
     public OrderType getOrderType() { return orderType; }
     public double getStopLossPrice() { return stopLossPrice; }
+    public double getRelativeVolume() { return relativeVolume; }
 }
