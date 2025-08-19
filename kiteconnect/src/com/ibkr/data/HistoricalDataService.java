@@ -105,20 +105,20 @@ public class HistoricalDataService {
                 dailyBars.sort((b1, b2) -> Long.compare(Long.parseLong(b1.timeStamp), Long.parseLong(b2.timeStamp)));
 
                 // Find the market open bar
-                long openingBarTimestamp = -1;
+                final long[] openingBarTimestamp = {-1L};
                 for(HistoricalData bar : dailyBars) {
                     LocalDateTime dt = LocalDateTime.ofEpochSecond(Long.parseLong(bar.timeStamp), 0, java.time.ZoneOffset.UTC);
                     // This logic needs to be timezone aware. Assuming UTC for now, but needs to be market time.
                     if (dt.toLocalTime().toString().contains(marketOpenTime)) {
-                        openingBarTimestamp = Long.parseLong(bar.timeStamp);
+                        openingBarTimestamp[0] = Long.parseLong(bar.timeStamp);
                         break;
                     }
                 }
 
-                if (openingBarTimestamp != -1) {
-                    long endTime = openingBarTimestamp + (timeframeMinutes * 60);
+                if (openingBarTimestamp[0] != -1) {
+                    long endTime = openingBarTimestamp[0] + (timeframeMinutes * 60);
                     long totalVolume = dailyBars.stream()
-                            .filter(bar -> Long.parseLong(bar.timeStamp) >= openingBarTimestamp && Long.parseLong(bar.timeStamp) < endTime)
+                            .filter(bar -> Long.parseLong(bar.timeStamp) >= openingBarTimestamp[0] && Long.parseLong(bar.timeStamp) < endTime)
                             .mapToLong(bar -> bar.volume)
                             .sum();
                     dailyOpeningVolume.put(date, totalVolume);

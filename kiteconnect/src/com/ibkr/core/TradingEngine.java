@@ -1,10 +1,13 @@
 package com.ibkr.core;
 
+import com.ibkr.IBOrderExecutor;
 import com.ibkr.analysis.MarketSentimentAnalyzer;
 import com.ibkr.analysis.SectorStrengthAnalyzer;
 import com.ibkr.analysis.VolumeSpikeAnalyzer;
+import com.ibkr.data.HistoricalDataService;
 import com.ibkr.data.HistoricalVolumeService;
 import com.ibkr.indicators.*;
+import com.ibkr.models.PortfolioManager;
 import com.ibkr.safeguards.*;
 import com.ibkr.liquidity.*;
 import com.ibkr.data.InstrumentRegistry;
@@ -57,9 +60,9 @@ public class TradingEngine {
     private final HistoricalVolumeService historicalVolumeService;
     private final VolumeSpikeAnalyzer volumeSpikeAnalyzer;
     private final IBOrderExecutor ibOrderExecutor;
-    private final StockScreener stockScreener;
+    private StockScreener stockScreener;
     private final PortfolioManager portfolioManager;
-    private final HistoricalDataService historicalDataService;
+    private HistoricalDataService historicalDataService;
 
 
     // Data structures for ORB Strategy support
@@ -82,12 +85,10 @@ public class TradingEngine {
     private final Map<String, PreviousDayData> dailyPdhCache = new ConcurrentHashMap<>(); // +OrbStrategy
 
 
-    public TradingEngine(AppContext appContext, IBOrderExecutor ibOrderExecutor, StockScreener stockScreener, PortfolioManager portfolioManager, HistoricalDataService historicalDataService) {
+    public TradingEngine(AppContext appContext, IBOrderExecutor ibOrderExecutor, PortfolioManager portfolioManager) {
         this.appContext = appContext;
         this.ibOrderExecutor = ibOrderExecutor;
-        this.stockScreener = stockScreener;
         this.portfolioManager = portfolioManager;
-        this.historicalDataService = historicalDataService;
         this.instrumentRegistry = appContext.getInstrumentRegistry();
         this.tickAggregator = appContext.getTickAggregator();
         this.marketSentimentAnalyzer = appContext.getMarketSentimentAnalyzer();
@@ -95,12 +96,12 @@ public class TradingEngine {
         this.volumeAnalyzer = new VolumeAnalyzer();
         this.circuitBreakerMonitor = new CircuitBreakerMonitor();
         this.darkPoolScanner = new DarkPoolScanner();
-        this.sectorStrengthAnalyzer = new SectorStrengthAnalyzer(instrumentRegistry);
+        this.sectorStrengthAnalyzer = new SectorStrengthAnalyzer(appContext.getSectorToStocks(), appContext.getSymbolToSector());
 
 
         // Initialize ORB Strategy components
         this.orbStrategyParameters = new OrbStrategyParameters(); // Using default parameters for now
-        this.orbStrategy = new OrbStrategy(this.appContext, this.instrumentRegistry, this.orbStrategyParameters, "America/New_York"); // Assuming ET for IBKR
+        this.orbStrategy = new OrbStrategy(this.appContext, this.orbStrategyParameters, "America/New_York"); // Assuming ET for IBKR
 
         // Initialize Intraday Price Action Analyzer
         this.intradayPriceActionAnalyzer = new IntradayPriceActionAnalyzer(this.appContext); // +PriceAction
@@ -119,6 +120,12 @@ public class TradingEngine {
         }
 
         logger.info("TradingEngine initialized, including OrbStrategy, IntradayPriceActionAnalyzer, and VolumeSpikeAnalyzer.");
+    }
+
+    public void initializeServices(HistoricalDataService historicalDataService, StockScreener stockScreener) {
+        this.historicalDataService = historicalDataService;
+        this.stockScreener = stockScreener;
+        logger.info("TradingEngine services initialized.");
     }
 
     public void runPreMarketScreen() {
@@ -153,7 +160,6 @@ public class TradingEngine {
         // Reset ORB strategy daily state and set PDH
         if (orbStrategy != null) {
             orbStrategy.resetDailyState(symbol);
-            orbStrategy.setPreviousDayHigh(symbol, pdhData.getPreviousHigh());
             logger.info("ORB Strategy daily state reset and PDH set for symbol: {}", symbol);
 
             // Fetch historical data for relative volume calculation
@@ -242,17 +248,12 @@ public class TradingEngine {
         }
         // double previousDayHigh = (pdhData != null) ? pdhData.getPreviousHigh() : 0.0; // OrbStrategy handles its own PDH state
 
-        // Prepare VolumeData
-        // Note: calculateAverageVolume needs history *before* adding the new BarData.
-        double averageLastNVols = calculateAverageVolume(symbol, orbStrategyParameters.getVolumeAverageLookbackCandles());
-        OrbStrategy.VolumeData volumeData = new OrbStrategy.VolumeData(volumeForBar, averageLastNVols);
-
         // Update history *after* calculating average for the current bar's context
         List<BarData> history = oneMinuteBarsHistory.computeIfAbsent(symbol, k -> new ArrayList<>());
         history.add(new BarData(ohlcPortion, volumeForBar, barTimestamp)); // Add current bar to history
 
         // Optional: Trim history if it grows too large
-        int maxHistorySize = Math.max(20, orbStrategyParameters.getVolumeAverageLookbackCandles() + 5);
+        int maxHistorySize = 25;
         while (history.size() > maxHistorySize) {
             history.remove(0);
         }
@@ -283,7 +284,7 @@ public class TradingEngine {
         // Call OrbStrategy
         if (orbStrategy != null) {
             // Pass the OHLC part of the new bar to the strategy
-            TradingSignal orbSignal = orbStrategy.processBar(symbol, ohlcPortion, barTimestamp, bidDepth, askDepth, volumeData);
+            TradingSignal orbSignal = orbStrategy.processBar(symbol, ohlcPortion, volumeForBar, barTimestamp);
             if (orbSignal != null && orbSignal.getAction() != TradeAction.HOLD) {
                 logger.info("TradingEngine: ORB Strategy generated signal for {}: {}", symbol, orbSignal);
                 // The signal is not processed here anymore. It will be processed by the screener.
@@ -336,7 +337,7 @@ public class TradingEngine {
         // Check ORB strategy state first
         if (orbStrategy != null) {
             OrbStrategyState orbState = orbStrategy.getState(tick.getSymbol()); // Assumes OrbStrategy has a public getState or similar
-            if (orbState.tradeTakenToday) {
+            if (orbState.stopOrderPlaced) {
                 logger.info("ORB trade already taken for {} today. Tick-based strategy will not generate new entry signals.", tick.getSymbol());
                 // Still allow tick-based logic to manage exits if position was taken by ORB
                 // and if the existing exit logic is compatible.
@@ -633,5 +634,9 @@ public class TradingEngine {
 
     public OrbStrategyParameters getOrbStrategyParameters() {
         return orbStrategyParameters;
+    }
+
+    public VWAPAnalyzer getVwapAnalyzer() {
+        return vwapAnalyzer;
     }
 }
