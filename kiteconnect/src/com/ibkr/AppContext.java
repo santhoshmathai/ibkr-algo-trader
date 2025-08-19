@@ -20,6 +20,8 @@ import com.ibkr.strategy.TickProcessor;
 import com.ibkr.data.MarketDataHandler;
 import com.ibkr.models.PortfolioManager;
 import com.ibkr.models.PreviousDayData;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -81,6 +83,7 @@ public class AppContext {
     private final Map<Integer, String> historicalDataReqIdToSymbol = new ConcurrentHashMap<>();
     private final Map<String, List<String>> sectorToStocks = new ConcurrentHashMap<>();
     private final Map<String, String> symbolToSector = new ConcurrentHashMap<>();
+    private final MeterRegistry meterRegistry;
 
     // TWS Connection Parameters
     private final String twsHost;
@@ -106,6 +109,7 @@ public class AppContext {
         // --- Component Initialization ---
 
         // Level 0: Components with no internal dependencies
+        this.meterRegistry = new SimpleMeterRegistry();
         this.instrumentRegistry = new InstrumentRegistry(this);
         this.marketDataHandler = new MarketDataHandler();
         this.tickAggregator = new TickAggregator(this.instrumentRegistry);
@@ -131,7 +135,7 @@ public class AppContext {
         // Level 2: IBClient depends on TickProcessor
         this.ibClient = new IBClient(this, this.instrumentRegistry, this.tickAggregator, this.tickProcessor, this.ibOrderExecutor, this.marketDataHandler);
         this.tickAggregator.setTradingEngine(this.tradingEngine);
-        this.historicalDataService = new HistoricalDataService(this.ibClient, this.instrumentRegistry);
+        this.historicalDataService = new HistoricalDataService(this.ibClient, this.instrumentRegistry, this.meterRegistry);
         this.stockScreener = new StockScreener(this.historicalDataService);
 
 

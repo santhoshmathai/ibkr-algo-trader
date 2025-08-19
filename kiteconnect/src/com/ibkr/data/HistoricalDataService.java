@@ -3,15 +3,17 @@ package com.ibkr.data;
 import com.ib.client.Contract;
 import com.ibkr.core.IBClient;
 import com.zerodhatech.models.HistoricalData;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.LocalDateTime;
+import java.time.*;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -24,111 +26,229 @@ public class HistoricalDataService {
     private static final Logger logger = LoggerFactory.getLogger(HistoricalDataService.class);
     private final IBClient ibClient;
     private final InstrumentRegistry instrumentRegistry;
-    private static final DateTimeFormatter IB_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd HH:mm:ss");
+    private final MeterRegistry meterRegistry;
 
+    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
+    private static final ZoneId MARKET_TIME_ZONE = ZoneId.of("America/New_York"); // Adjust based on your market
 
-    public HistoricalDataService(IBClient ibClient, InstrumentRegistry instrumentRegistry) {
+    // Metrics
+    private final Counter dailyDataRequestsCounter;
+    private final Counter openingRangeRequestsCounter;
+    private final Counter failedRequestsCounter;
+    private final Timer dailyDataTimer;
+    private final Timer openingRangeTimer;
+
+    public HistoricalDataService(IBClient ibClient, InstrumentRegistry instrumentRegistry, MeterRegistry meterRegistry) {
         this.ibClient = ibClient;
         this.instrumentRegistry = instrumentRegistry;
+        this.meterRegistry = meterRegistry;
+
+        // Initialize metrics
+        this.dailyDataRequestsCounter = Counter.builder("historical.data.requests")
+                .tag("type", "daily")
+                .register(meterRegistry);
+
+        this.openingRangeRequestsCounter = Counter.builder("historical.data.requests")
+                .tag("type", "opening_range")
+                .register(meterRegistry);
+
+        this.failedRequestsCounter = Counter.builder("historical.data.failures")
+                .register(meterRegistry);
+
+        this.dailyDataTimer = Timer.builder("historical.data.duration")
+                .tag("type", "daily")
+                .register(meterRegistry);
+
+        this.openingRangeTimer = Timer.builder("historical.data.duration")
+                .tag("type", "opening_range")
+                .register(meterRegistry);
+    }
+
+    /**
+     * Validates contract existence for a given symbol
+     */
+    private Contract validateAndGetContract(String symbol) {
+        Contract contract = instrumentRegistry.getContractBySymbol(symbol);
+        if (contract == null) {
+            String errorMsg = "No contract found for symbol: " + symbol;
+            logger.error(errorMsg);
+            failedRequestsCounter.increment();
+            throw new IllegalArgumentException(errorMsg);
+        }
+        return contract;
     }
 
     /**
      * Fetches historical daily bars for a given symbol for a specified number of trading days.
-     *
-     * @param symbol The stock symbol.
-     * @param days   The number of past trading days to fetch (e.g., 14 for 14 days).
-     * @return A CompletableFuture that will complete with a list of HistoricalData objects.
      */
     public CompletableFuture<List<HistoricalData>> getDailyHistoricalData(String symbol, int days) {
-        Contract contract = instrumentRegistry.getContractBySymbol(symbol);
-        if (contract == null) {
-            logger.error("No contract found for symbol: {}. Cannot fetch daily historical data.", symbol);
-            return CompletableFuture.failedFuture(new IllegalArgumentException("No contract for symbol: " + symbol));
+        long startTime = System.nanoTime();
+        dailyDataRequestsCounter.increment();
+
+        try {
+            Contract contract = validateAndGetContract(symbol);
+
+            String endDateTime = ""; // Empty string gets data up to the previous day's close
+            String durationStr = days + " D";
+            String barSizeSetting = "1 day";
+            String whatToShow = "TRADES";
+            int useRTH = 1; // Use regular trading hours
+            int formatDate = 2; // 2 for epoch seconds
+
+            logger.info("Requesting daily historical data for {}: {} days", symbol, days);
+
+            CompletableFuture<List<HistoricalData>> result = ibClient.requestHistoricalData(
+                    contract, endDateTime, durationStr, barSizeSetting, whatToShow, useRTH, formatDate);
+
+            // Record success metrics when completed
+            result.whenComplete((data, ex) -> {
+                long duration = System.nanoTime() - startTime;
+                dailyDataTimer.record(duration, TimeUnit.NANOSECONDS);
+
+                if (ex != null) {
+                    failedRequestsCounter.increment();
+                    logger.error("Failed to fetch daily data for {}: {}", symbol, ex.getMessage());
+                } else {
+                    logger.info("Successfully fetched {} daily bars for {}", data.size(), symbol);
+                    // Record additional success metric
+                    meterRegistry.counter("historical.data.success", "type", "daily").increment();
+                }
+            });
+
+            return result;
+
+        } catch (IllegalArgumentException e) {
+            long duration = System.nanoTime() - startTime;
+            dailyDataTimer.record(duration, TimeUnit.NANOSECONDS);
+            failedRequestsCounter.increment();
+            return CompletableFuture.failedFuture(e);
         }
-
-        String endDateTime = ""; // Empty string gets data up to the previous day's close
-        String durationStr = days + " D";
-        String barSizeSetting = "1 day";
-        String whatToShow = "TRADES";
-        int useRTH = 1; // Use regular trading hours
-        int formatDate = 2; // 2 for epoch seconds, easier to parse
-
-        logger.info("Requesting daily historical data for {}: {} days", symbol, days);
-        return ibClient.requestHistoricalData(contract, endDateTime, durationStr, barSizeSetting, whatToShow, useRTH, formatDate);
     }
 
     /**
      * Fetches historical opening range bars for a symbol for the last N days.
-     * For example, it can fetch the first 5 minutes of data for the last 14 days.
-     * Note: This implementation fetches 1-minute bars for the last N days and then filters them.
-     * A more optimized approach might be possible depending on exact IB API capabilities.
-     *
-     * @param symbol           The stock symbol.
-     * @param days             The number of past trading days to fetch.
-     * @param timeframeMinutes The duration of the opening range in minutes (e.g., 5).
-     * @param marketOpenTime   The time the market opens (e.g., "09:30:00").
-     * @return A CompletableFuture that will complete with a map where the key is the date string
-     *         and the value is the aggregated volume for the opening range of that date.
      */
     public CompletableFuture<Map<String, Long>> getOpeningRangeVolumeHistory(String symbol, int days, int timeframeMinutes, String marketOpenTime) {
-        Contract contract = instrumentRegistry.getContractBySymbol(symbol);
-        if (contract == null) {
-            logger.error("No contract found for symbol: {}. Cannot fetch opening range history.", symbol);
-            return CompletableFuture.failedFuture(new IllegalArgumentException("No contract for symbol: " + symbol));
-        }
+        long startTime = System.nanoTime();
+        openingRangeRequestsCounter.increment();
 
-        String endDateTime = ""; // Fetch up to now/previous day
-        String durationStr = days + " D";
-        String barSizeSetting = "1 min"; // Fetch 1-minute bars to aggregate
-        String whatToShow = "TRADES";
-        int useRTH = 1; // RTH only
-        int formatDate = 2; // epoch seconds
+        try {
+            Contract contract = validateAndGetContract(symbol);
 
-        logger.info("Requesting 1-min historical data for {} to calculate opening range volume for last {} days.", symbol, days);
+            String endDateTime = "";
+            String durationStr = days + " D";
+            String barSizeSetting = "1 min";
+            String whatToShow = "TRADES";
+            int useRTH = 1;
+            int formatDate = 2;
 
-        CompletableFuture<List<HistoricalData>> futureBars = ibClient.requestHistoricalData(contract, endDateTime, durationStr, barSizeSetting, whatToShow, useRTH, formatDate);
+            logger.info("Requesting 1-min historical data for {} to calculate opening range volume for last {} days", symbol, days);
 
-        return futureBars.thenApply(bars -> {
-            logger.debug("Processing {} 1-min bars for {} to extract opening range volume.", bars.size(), symbol);
-            // Group bars by date
-            Map<String, List<HistoricalData>> barsByDate = bars.stream()
-                    .collect(Collectors.groupingBy(bar -> {
-                        // Extract date part from timestamp, assuming epoch seconds
-                        LocalDateTime dt = LocalDateTime.ofEpochSecond(Long.parseLong(bar.timeStamp), 0, java.time.ZoneOffset.UTC);
-                        return dt.toLocalDate().toString();
-                    }));
+            CompletableFuture<Map<String, Long>> result = ibClient.requestHistoricalData(
+                    contract, endDateTime, durationStr, barSizeSetting, whatToShow, useRTH, formatDate)
+                    .thenApply(bars -> processOpeningRangeBars(bars, timeframeMinutes, marketOpenTime, symbol));
 
-            Map<String, Long> dailyOpeningVolume = new java.util.HashMap<>();
+            // Record success metrics when completed
+            result.whenComplete((data, ex) -> {
+                long duration = System.nanoTime() - startTime;
+                openingRangeTimer.record(duration, TimeUnit.NANOSECONDS);
 
-            barsByDate.forEach((date, dailyBars) -> {
-                // Sort bars by time just in case
-                dailyBars.sort((b1, b2) -> Long.compare(Long.parseLong(b1.timeStamp), Long.parseLong(b2.timeStamp)));
-
-                // Find the market open bar
-                final long[] openingBarTimestamp = {-1L};
-                for(HistoricalData bar : dailyBars) {
-                    LocalDateTime dt = LocalDateTime.ofEpochSecond(Long.parseLong(bar.timeStamp), 0, java.time.ZoneOffset.UTC);
-                    // This logic needs to be timezone aware. Assuming UTC for now, but needs to be market time.
-                    if (dt.toLocalTime().toString().contains(marketOpenTime)) {
-                        openingBarTimestamp[0] = Long.parseLong(bar.timeStamp);
-                        break;
-                    }
-                }
-
-                if (openingBarTimestamp[0] != -1) {
-                    long endTime = openingBarTimestamp[0] + (timeframeMinutes * 60);
-                    long totalVolume = dailyBars.stream()
-                            .filter(bar -> Long.parseLong(bar.timeStamp) >= openingBarTimestamp[0] && Long.parseLong(bar.timeStamp) < endTime)
-                            .mapToLong(bar -> bar.volume)
-                            .sum();
-                    dailyOpeningVolume.put(date, totalVolume);
-                    logger.debug("Date: {}, Opening Range ({}-min) Volume: {}", date, timeframeMinutes, totalVolume);
+                if (ex != null) {
+                    failedRequestsCounter.increment();
+                    logger.error("Failed to fetch opening range data for {}: {}", symbol, ex.getMessage());
                 } else {
-                    logger.warn("Could not find opening bar for date {} for symbol {}. Cannot calculate OR volume.", date, symbol);
+                    logger.info("Successfully processed opening range data for {} days for {}", data.size(), symbol);
+                    // Record additional success metric
+                    meterRegistry.counter("historical.data.success", "type", "opening_range").increment();
                 }
             });
 
-            return dailyOpeningVolume;
+            return result;
+
+        } catch (IllegalArgumentException e) {
+            long duration = System.nanoTime() - startTime;
+            openingRangeTimer.record(duration, TimeUnit.NANOSECONDS);
+            failedRequestsCounter.increment();
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+
+    /**
+     * Processes 1-minute bars to extract opening range volume data
+     */
+    private Map<String, Long> processOpeningRangeBars(List<HistoricalData> bars, int timeframeMinutes, String marketOpenTime, String symbol) {
+        if (bars == null || bars.isEmpty()) {
+            logger.warn("No bars received for symbol: {}", symbol);
+            return Collections.emptyMap();
+        }
+
+        logger.debug("Processing {} 1-min bars for {} to extract opening range volume", bars.size(), symbol);
+
+        // Parse market open time once
+        LocalTime marketOpen = LocalTime.parse(marketOpenTime);
+
+        Map<String, List<HistoricalData>> barsByDate = bars.stream()
+                .collect(Collectors.groupingBy(bar -> extractDateFromEpoch(bar.timeStamp)));
+
+        Map<String, Long> dailyOpeningVolume = new HashMap<>();
+
+        barsByDate.forEach((date, dailyBars) -> {
+            long openingVolume = calculateDailyOpeningVolume(dailyBars, marketOpen, timeframeMinutes, date, symbol);
+            if (openingVolume >= 0) {
+                dailyOpeningVolume.put(date, openingVolume);
+            }
         });
+
+        return dailyOpeningVolume;
+    }
+
+    /**
+     * Extracts date from epoch timestamp with proper timezone handling
+     */
+    private String extractDateFromEpoch(String epochSeconds) {
+        long epoch = Long.parseLong(epochSeconds);
+        Instant instant = Instant.ofEpochSecond(epoch);
+        ZonedDateTime marketTime = instant.atZone(MARKET_TIME_ZONE);
+        return marketTime.format(DATE_FORMATTER);
+    }
+
+    /**
+     * Calculates opening range volume for a single day
+     */
+    private long calculateDailyOpeningVolume(List<HistoricalData> dailyBars, LocalTime marketOpen,
+                                           int timeframeMinutes, String date, String symbol) {
+        // Sort by timestamp
+        dailyBars.sort(Comparator.comparingLong(bar -> Long.parseLong(bar.timeStamp)));
+
+        // Find market open bar with proper timezone handling
+        Optional<HistoricalData> openingBar = dailyBars.stream()
+                .filter(bar -> isMarketOpenTime(bar.timeStamp, marketOpen))
+                .findFirst();
+
+        if (!openingBar.isPresent()) {
+            logger.warn("Could not find opening bar for date {} for symbol {}", date, symbol);
+            return -1;
+        }
+
+        long openingTimestamp = Long.parseLong(openingBar.get().timeStamp);
+        long endTimestamp = openingTimestamp + (timeframeMinutes * 60);
+
+        return dailyBars.stream()
+                .filter(bar -> {
+                    long barTimestamp = Long.parseLong(bar.timeStamp);
+                    return barTimestamp >= openingTimestamp && barTimestamp < endTimestamp;
+                })
+                .mapToLong(bar -> bar.volume)
+                .sum();
+    }
+
+    /**
+     * Checks if a bar timestamp matches market open time with proper timezone
+     */
+    private boolean isMarketOpenTime(String epochSeconds, LocalTime marketOpen) {
+        long epoch = Long.parseLong(epochSeconds);
+        Instant instant = Instant.ofEpochSecond(epoch);
+        ZonedDateTime marketTime = instant.atZone(MARKET_TIME_ZONE);
+        return marketTime.toLocalTime().equals(marketOpen);
     }
 }
