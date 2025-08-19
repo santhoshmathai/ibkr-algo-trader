@@ -93,7 +93,7 @@ public class TickProcessor {
             }
         }
 
-        boolean openingWindow = appContext.isMarketInOpeningWindow();
+        boolean openingWindow = appContext.getMarketSentimentAnalyzer().isInAnalysisWindow();
         boolean openingSignalActedUpon = false;
 
         MarketSentimentAnalyzer sentimentAnalyzer = appContext.getMarketSentimentAnalyzer();
@@ -238,17 +238,9 @@ public class TickProcessor {
             return;
         }
         try {
-            com.ibkr.models.Order order = new com.ibkr.models.Order();
-            order.setSymbol(signal.getSymbol());
-            order.setAction(signal.getAction());
-            order.setQuantity(signal.getQuantity());
-            order.setPrice(signal.getPrice()); // LTP from signal, used as LMT price by IBOrderExecutor if LMT
-            order.setDarkPoolAllowed(signal.isDarkPoolAllowed());
-            // order.setOrderType(...); // If TradingSignal were to specify MKT/LMT
-
-            logger.info("Placing order for signal: Symbol={}, Action={}, Qty={}, Price={}, DarkPoolOK={}",
-                order.getSymbol(), order.getAction(), order.getQuantity(), order.getPrice(), order.isDarkPoolAllowed());
-            orderExecutor.placeOrder(order);
+            logger.info("Placing order for signal: Symbol={}, Action={}, Qty={}, Price={}",
+                signal.getSymbol(), signal.getAction(), signal.getQuantity(), signal.getPrice());
+            orderExecutor.placeOrder(signal);
         } catch (Exception e) {
             logger.error("Error executing trade for signal {}: {}", signal, e.getMessage(), e);
         }
@@ -278,8 +270,8 @@ public class TickProcessor {
         String symbol = signal.getSymbol() != null ? signal.getSymbol() : (existingPosition != null ? existingPosition.getSymbol() : tick.getSymbol());
 
         double entryVolatility = 0.0;
-        if (appContext.getVolatilityAnalyzer() != null && tick != null) {
-            entryVolatility = appContext.getVolatilityAnalyzer().getCurrentVolatility(tick);
+        if (tradingEngine.getVwapAnalyzer() != null && tick != null) {
+            entryVolatility = tradingEngine.getVwapAnalyzer().getVolatility();
         } else {
             logger.warn("Could not calculate entry volatility for {}: VolatilityAnalyzer or Tick is null during updatePosition. Using 0.0.", symbol);
         }

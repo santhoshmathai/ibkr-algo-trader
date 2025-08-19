@@ -5,6 +5,7 @@ import com.ibkr.models.Order;  // Our custom Order model
 import com.ibkr.models.PortfolioManager;
 import com.ibkr.models.TradeAction;
 import com.ibkr.models.OrderType;
+import com.ibkr.models.TradingSignal;
 import com.ibkr.safeguards.CircuitBreakerMonitor;
 import com.ibkr.liquidity.DarkPoolScanner;
 import com.ibkr.data.InstrumentRegistry;

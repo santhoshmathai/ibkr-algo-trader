@@ -73,6 +73,8 @@ public class AppContext {
     private final Set<String> top100USStocks;
     private final Map<String, PreviousDayData> previousDayDataMap = new ConcurrentHashMap<>();
     private final Map<Integer, String> historicalDataReqIdToSymbol = new ConcurrentHashMap<>();
+    private final Map<String, List<String>> sectorToStocks = new ConcurrentHashMap<>();
+    private final Map<String, String> symbolToSector = new ConcurrentHashMap<>();
 
     // TWS Connection Parameters
     private final String twsHost;
@@ -92,6 +94,7 @@ public class AppContext {
         this.twsClientId = Integer.parseInt(properties.getProperty("tws.clientId", "0"));
         int openingObservationMinutes = Integer.parseInt(properties.getProperty("market.opening.observation.minutes", "15"));
 
+        loadSectorData(properties);
         this.top100USStocks = loadTop100USStocks(properties);
 
         // --- Component Initialization ---
@@ -109,7 +112,7 @@ public class AppContext {
         // Level 1: Components that depend on Level 0
         this.portfolioManager = new PortfolioManager();
         this.ibOrderExecutor = new IBOrderExecutor(this.circuitBreakerMonitor, this.darkPoolScanner, this.instrumentRegistry, this.portfolioManager);
-        this.tradingEngine = new TradingEngine(this, ibOrderExecutor, stockScreener, portfolioManager, historicalDataService);
+        this.tradingEngine = new TradingEngine(this, ibOrderExecutor, portfolioManager);
 
         // TickProcessor is now simplified, it just needs to know about the engine to pass it bars.
         // The nulls are placeholders for obsolete dependencies (breakoutSignalGenerator, riskManager).
@@ -130,7 +133,7 @@ public class AppContext {
         this.ibClient.setConnectionManager(this.ibConnectionManager);
 
         // Final Step: Initialize TradingEngine services that required the IBClient, breaking the circular dependency.
-        this.tradingEngine.initializeServices(this.ibClient, this.instrumentRegistry);
+        this.tradingEngine.initializeServices(this.historicalDataService, this.stockScreener);
 
         long orbTimeframeMinutes = tradingEngine.getOrbStrategyParameters().getOrbTimeframeMinutes();
         this.scheduler.schedule(() -> {
@@ -165,6 +168,22 @@ public class AppContext {
         return new HashSet<>(Arrays.asList(stocksProperty.split(",")));
     }
 
+    private void loadSectorData(Properties properties) {
+        for (String propertyName : properties.stringPropertyNames()) {
+            if (propertyName.startsWith("sector.") && propertyName.endsWith(".stocks")) {
+                String sectorName = propertyName.substring("sector.".length(), propertyName.length() - ".stocks".length());
+                String[] stocks = properties.getProperty(propertyName).split(",");
+                List<String> stockList = new ArrayList<>();
+                for (String stock : stocks) {
+                    String trimmedStock = stock.trim();
+                    stockList.add(trimmedStock);
+                    symbolToSector.put(trimmedStock, sectorName);
+                }
+                sectorToStocks.put(sectorName, stockList);
+            }
+        }
+    }
+
     // --- Getters for major components ---
     public IBClient getIbClient() { return ibClient; }
     public Set<String> getTop100USStocks() { return top100USStocks; }
@@ -179,6 +198,8 @@ public class AppContext {
     public HistoricalDataService getHistoricalDataService() { return historicalDataService; }
     public StockScreener getStockScreener() { return stockScreener; }
     public PortfolioManager getPortfolioManager() { return portfolioManager; }
+    public Map<String, List<String>> getSectorToStocks() { return sectorToStocks; }
+    public Map<String, String> getSymbolToSector() { return symbolToSector; }
 
     // --- Other methods ---
     public int getNextRequestId() { return nextRequestId.getAndIncrement(); }
@@ -192,6 +213,10 @@ public class AppContext {
         if (dataMap != null) {
             this.previousDayDataMap.putAll(dataMap);
         }
+    }
+
+    public Map<String, PreviousDayData> getPreviousDayDataMap() {
+        return previousDayDataMap;
     }
 
     public void registerHistoricalDataRequest(int reqId, String symbol) { historicalDataReqIdToSymbol.put(reqId, symbol); }
