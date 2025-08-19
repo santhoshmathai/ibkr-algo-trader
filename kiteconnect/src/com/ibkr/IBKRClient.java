@@ -6,8 +6,11 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class IBKRClient implements EWrapper {
+    private static final Logger logger = LoggerFactory.getLogger(IBKRClient.class);
     private EClientSocket clientSocket;
     private int nextOrderId = 0;
     private EReaderSignal signal;
@@ -38,24 +41,24 @@ public class IBKRClient implements EWrapper {
 
         // Use a separate thread to read messages
         executor.execute(() -> {
-            System.out.println("execute thread start");
+            logger.info("execute thread start");
 
             while (clientSocket.isConnected()) {
-                System.out.println("clientSocket.isConnected() is true");
-                System.out.println("signal.waitForSignal() - before");
+                logger.debug("clientSocket.isConnected() is true");
+                logger.debug("signal.waitForSignal() - before");
 
                 signal.waitForSignal();
-                System.out.println("signal.waitForSignal() - after");
+                logger.debug("signal.waitForSignal() - after");
 
                 try {
-                    System.out.println(" reader.processMsgs() - before");
+                    logger.debug(" reader.processMsgs() - before");
 
                     reader.processMsgs();
-                    System.out.println(" reader.processMsgs() - after");
+                    logger.debug(" reader.processMsgs() - after");
 
-                    System.out.println("processMsgs");
+                    logger.debug("processMsgs");
                 } catch (Exception e) {
-                    System.err.println("Error processing messages: " + e.getMessage() + e.getClass());
+                    logger.error("Error processing messages: " + e.getMessage() + e.getClass());
                 }
             }
         });
@@ -64,7 +67,7 @@ public class IBKRClient implements EWrapper {
     public void connect(String host, int port, int clientId) {
         clientSocket.eConnect(host, port, clientId);
         if (clientSocket.isConnected()) {
-            System.out.println("Connected to IBKR");
+            logger.info("Connected to IBKR");
         }
     }
 
@@ -82,7 +85,7 @@ public class IBKRClient implements EWrapper {
             clientSocket.reqHistoricalData(tickerId++, contract, "", "5 D", "1 min", "MIDPOINT", 1, 1, false, null);
 
            // clientSocket.reqHistoricalData(1, contract, "", "5 D", "1 min", "MIDPOINT", 1, 1, false, null);
-            System.out.printf("Requested historical market data for %s%n", ticker);
+            logger.info("Requested historical market data for {}", ticker);
         }
     }
 
@@ -144,7 +147,7 @@ public class IBKRClient implements EWrapper {
             clientSocket.reqMarketDataType(3);
             clientSocket.reqMktData(tickerId++, contract, "",false, false, null);
 
-            System.out.println("Requested market data for: " + symbol);
+            logger.info("Requested market data for: {}", symbol);
         }
 
         /*for (String symbol : stockSymbols) {
@@ -166,7 +169,7 @@ public class IBKRClient implements EWrapper {
                     new ArrayList<>() // Empty list of TagValue instead of int
             );
 
-            System.out.println("Requested historical data for: " + symbol);
+            logger.info("Requested historical data for: " + symbol);
         } */
 
        // return contracts;
@@ -184,7 +187,7 @@ public class IBKRClient implements EWrapper {
         //clientSocket.reqMktData(1, contract, "", false, false, null);
         clientSocket.reqHistoricalData(3, contract, "", "5 D", "1 min", "MIDPOINT", 1, 1, false, null);
 
-        System.out.println("Requested Apple Market data");
+        logger.info("Requested Apple Market data");
 
     }
 
@@ -203,12 +206,12 @@ public class IBKRClient implements EWrapper {
     // Callback for real-time market data
     @Override
     public void tickPrice(int tickerId, int field, double price, TickAttrib attribs) {
-        System.out.printf("Tick Price. Ticker ID: %d, Field: %d, Price: %.2f%n", tickerId, field, price);
+        logger.debug("Tick Price. Ticker ID: {}, Field: {}, Price: {}", tickerId, field, price);
     }
 
     @Override
     public void tickSize(int tickerId, int field, int size) {
-        System.out.printf("Tick Size. Ticker ID: %d, Field: %d, Size: %d%n", tickerId, field, size);
+        logger.debug("Tick Size. Ticker ID: {}, Field: {}, Size: {}", tickerId, field, size);
     }
 
     @Override
@@ -218,7 +221,7 @@ public class IBKRClient implements EWrapper {
 
     @Override
     public void tickString(int tickerId, int tickType, String value) {
-        System.out.printf("Tick String. Ticker ID: %d, Tick Type: %d, Value: %s%n", tickerId, tickType, value);
+        logger.debug("Tick String. Ticker ID: {}, Tick Type: {}, Value: {}", tickerId, tickType, value);
     }
 
     @Override
@@ -228,38 +231,38 @@ public class IBKRClient implements EWrapper {
 
     @Override
     public void tickGeneric(int tickerId, int tickType, double value) {
-        System.out.printf("Tick Generic. Ticker ID: %d, Tick Type: %d, Value: %.2f%n", tickerId, tickType, value);
+        logger.debug("Tick Generic. Ticker ID: {}, Tick Type: {}, Value: {}", tickerId, tickType, value);
     }
 
     @Override
     public void nextValidId(int orderId) {
         nextOrderId = orderId;
-        System.out.println("Next Valid Order ID: " + orderId);
+        logger.info("Next Valid Order ID: {}", orderId);
     }
 
     @Override
     public void connectionClosed() {
-        System.out.println("Connection closed.");
+        logger.info("Connection closed.");
     }
 
     @Override
     public void error(Exception e) {
-        System.err.println("Error: " + e.getMessage());
+        logger.error("Error: ", e);
     }
 
     @Override
     public void error(int id, int errorCode, String errorMsg) {
-        System.err.printf("Error. ID: %d, Code: %d, Message: %s%n", id, errorCode, errorMsg);
+        logger.error("Error. ID: {}, Code: {}, Message: {}", id, errorCode, errorMsg);
     }
 
     @Override
     public void error(String str) {
-        System.err.println("Error: " + str);
+        logger.error("Error: {}", str);
     }
 
     @Override
     public void connectAck() {
-        System.out.println("Connection acknowledged.");
+        logger.info("Connection acknowledged.");
     }
 
     // Empty implementations for other EWrapper methods
@@ -363,15 +366,15 @@ public class IBKRClient implements EWrapper {
 
     @Override
     public void historicalData(int reqId, Bar bar) {
-        System.out.printf(
-                "Historical Data. ReqId: %d, Date: %s, Open: %.2f, High: %.2f, Low: %.2f, Close: %.2f, Volume: %d%n",
+        logger.debug(
+                "Historical Data. ReqId: {}, Date: {}, Open: {}, High: {}, Low: {}, Close: {}, Volume: {}",
                 reqId, bar.time(), bar.open(), bar.high(), bar.low(), bar.close(), bar.volume()
         );
     }
 
     @Override
     public void historicalDataEnd(int reqId, String startDate, String endDate) {
-        System.out.printf("Historical Data End. ReqId: %d, Start: %s, End: %s%n", reqId, startDate, endDate);
+        logger.info("Historical Data End. ReqId: {}, Start: {}, End: {}", reqId, startDate, endDate);
     }
 
     @Override
