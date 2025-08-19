@@ -85,7 +85,7 @@ public class TradingEngine {
     private final Map<String, PreviousDayData> dailyPdhCache = new ConcurrentHashMap<>(); // +OrbStrategy
 
 
-    public TradingEngine(AppContext appContext, IBOrderExecutor ibOrderExecutor, PortfolioManager portfolioManager) {
+    public TradingEngine(AppContext appContext, IBOrderExecutor ibOrderExecutor, PortfolioManager portfolioManager, SectorStrengthAnalyzer sectorStrengthAnalyzer) {
         this.appContext = appContext;
         this.ibOrderExecutor = ibOrderExecutor;
         this.portfolioManager = portfolioManager;
@@ -96,7 +96,7 @@ public class TradingEngine {
         this.volumeAnalyzer = new VolumeAnalyzer();
         this.circuitBreakerMonitor = new CircuitBreakerMonitor();
         this.darkPoolScanner = new DarkPoolScanner();
-        this.sectorStrengthAnalyzer = new SectorStrengthAnalyzer(appContext.getSectorToStocks(), appContext.getSymbolToSector());
+        this.sectorStrengthAnalyzer = sectorStrengthAnalyzer;
 
 
         // Initialize ORB Strategy components

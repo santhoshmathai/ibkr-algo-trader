@@ -62,4 +62,8 @@ public class VWAPAnalyzer {
         double vwap = getVWAP();
         return vwap > 0 ? (tick.getLastTradedPrice() - vwap) / vwap : 0;
     }
+
+    public boolean isTooVolatile() {
+        return getVolatility() > 0.05;
+    }
 }

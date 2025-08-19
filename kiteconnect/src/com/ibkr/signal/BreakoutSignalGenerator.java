@@ -11,7 +11,6 @@ import com.ibkr.models.SupportResistanceLevel; // New import
 import com.ibkr.models.LevelType; // New import
 import com.zerodhatech.models.Tick;
 import com.ibkr.models.TradingPosition;
-import com.ibkr.risk.VolatilityAnalyzer;
 import org.slf4j.Logger; // Added
 import org.slf4j.LoggerFactory; // Added
 import java.util.List; // New import
@@ -19,7 +18,6 @@ import java.util.List; // New import
 
 public class BreakoutSignalGenerator {
     private static final Logger logger = LoggerFactory.getLogger(BreakoutSignalGenerator.class); // Added
-    private final VolatilityAnalyzer volatilityAnalyzer; // This might be removed if not used by other methods
     private double breakoutThreshold = 0.02; // 2%
     private double breakdownThreshold = -0.015; // -1.5% (more sensitive for shorts)
     private final VWAPAnalyzer vwapAnalyzer;
@@ -27,10 +25,9 @@ public class BreakoutSignalGenerator {
     private final SectorStrengthAnalyzer sectorAnalyzer;
     private final SupportResistanceAnalyzer srAnalyzer; // Added field
 
-    public BreakoutSignalGenerator(VolatilityAnalyzer volatilityAnalyzer, VWAPAnalyzer vwapAnalyzer,
+    public BreakoutSignalGenerator(VWAPAnalyzer vwapAnalyzer,
                                    VolumeAnalyzer volumeAnalyzer, SectorStrengthAnalyzer sectorAnalyzer,
                                    SupportResistanceAnalyzer srAnalyzer) { // Added srAnalyzer
-        this.volatilityAnalyzer = volatilityAnalyzer;
         this.vwapAnalyzer = vwapAnalyzer;
         this.volumeAnalyzer = volumeAnalyzer;
         this.sectorAnalyzer = sectorAnalyzer;

@@ -1,18 +1,19 @@
 package com.ibkr.risk;
 
 
+import com.ibkr.indicators.VWAPAnalyzer;
 import com.zerodhatech.models.Tick;
 import com.ibkr.models.TradingSignal;
 import com.ibkr.models.TradingPosition;
 
 public class RiskManager {
-    public RiskManager(LiquidityMonitor liquidityMonitor, VolatilityAnalyzer volatilityAnalyzer) {
+    public RiskManager(LiquidityMonitor liquidityMonitor, VWAPAnalyzer vwapAnalyzer) {
         this.liquidityMonitor = liquidityMonitor;
-        this.volatilityAnalyzer = volatilityAnalyzer;
+        this.vwapAnalyzer = vwapAnalyzer;
     }
 
     private final LiquidityMonitor liquidityMonitor;
-    private final VolatilityAnalyzer volatilityAnalyzer;
+    private final VWAPAnalyzer vwapAnalyzer;
 
     public boolean validateTrade(TradingSignal signal, Tick currentTick) {
         // Reject if spread is too wide
@@ -21,7 +22,7 @@ public class RiskManager {
         }
 
         // Reject if volatility exceeds threshold
-        if (volatilityAnalyzer.isTooVolatile(currentTick)) {
+        if (vwapAnalyzer.isTooVolatile()) {
             return false;
         }
 
@@ -30,7 +31,7 @@ public class RiskManager {
     }
 
     public double calculateMaxPositionSize(Tick tick) {
-        double volatilityFactor = 1 / volatilityAnalyzer.getCurrentVolatility(tick);
+        double volatilityFactor = 1 / vwapAnalyzer.getVolatility();
         double liquidityFactor = liquidityMonitor.getLiquidityScore(tick);
         return 1000 * volatilityFactor * liquidityFactor; // Base 1000 shares
     }
