@@ -47,6 +47,9 @@ public class IBAppMain {
             client.initiateHistoricalDataFetch();
             // Note: This call is blocking as per fetchPreviousDayDataForAllStocks implementation.
 
+            // Run the pre-market screen
+            appContext.getTradingEngine().runPreMarketScreen();
+
             // Subscribe to instruments from AppContext's list if desired
             Set<String> stocksToSubscribe = appContext.getTop100USStocks(); // Example
             logger.info("Subscribing to symbols: {}", stocksToSubscribe);

@@ -2,7 +2,9 @@ package com.ibkr;
 
 import com.ib.client.*;
 import com.ibkr.models.Order;  // Our custom Order model
+import com.ibkr.models.PortfolioManager;
 import com.ibkr.models.TradeAction;
+import com.ibkr.models.OrderType;
 import com.ibkr.safeguards.CircuitBreakerMonitor;
 import com.ibkr.liquidity.DarkPoolScanner;
 import com.ibkr.data.InstrumentRegistry;
@@ -22,20 +24,25 @@ public class IBOrderExecutor {
     private final CircuitBreakerMonitor cbMonitor;
     private final DarkPoolScanner dpScanner;
     private final InstrumentRegistry instrumentRegistry;
+    private final PortfolioManager portfolioManager;
     private final AtomicInteger nextOrderId = new AtomicInteger(0);
     private final Map<String, Integer> symbolToOrderId = new HashMap<>(); // This map might need review for long-running apps
 
     // Internal storage for order states and executions
     private final Map<Integer, String> orderIdToStatusMap = new ConcurrentHashMap<>();
     private final Map<Integer, List<Execution>> orderIdToExecutionsMap = new ConcurrentHashMap<>();
+    private final Map<Integer, Order> orderIdToOrderMap = new ConcurrentHashMap<>();
+    private final Map<Integer, TradingSignal> orderIdToSignalMap = new ConcurrentHashMap<>();
 
 
     public IBOrderExecutor(CircuitBreakerMonitor cbMonitor,
                            DarkPoolScanner dpScanner,
-                           InstrumentRegistry instrumentRegistry) {
+                           InstrumentRegistry instrumentRegistry,
+                           PortfolioManager portfolioManager) {
         this.cbMonitor = cbMonitor;
         this.dpScanner = dpScanner;
         this.instrumentRegistry = instrumentRegistry;
+        this.portfolioManager = portfolioManager;
         // nextOrderId is initialized when TWS calls nextValidId via IBClient
     }
 
@@ -43,24 +50,43 @@ public class IBOrderExecutor {
         this.clientSocket = clientSocket;
     }
 
-    public void placeOrder(Order order) {
+    public int placeOrder(Order order) {
         if (this.nextOrderId.get() == 0) {
             logger.error("Cannot place order for {}. NextValidId has not been received from TWS yet.", order.getSymbol());
             // Optionally, throw an exception or return an order rejection status
-            return;
+            return -1;
         }
         Contract contract = createContract(order.getSymbol());
         com.ib.client.Order ibOrder = createIBOrder(order);
 
         int orderId = this.nextOrderId.getAndIncrement(); // Use AtomicInteger
         symbolToOrderId.put(order.getSymbol() + "_" + orderId, orderId); // Make key more unique if needed
+        orderIdToOrderMap.put(orderId, order);
 
         if (this.clientSocket == null) {
             logger.error("EClientSocket is not set. Cannot place order for symbol: {}", order.getSymbol());
-            return;
+            return -1;
         }
         this.clientSocket.placeOrder(orderId, contract, ibOrder);
         logger.info("Placed IB order #{} for {}", orderId, order.getSymbol());
+        return orderId;
+    }
+
+    public void placeOrder(TradingSignal signal) {
+        Order order = new Order();
+        order.setSymbol(signal.getSymbol());
+        order.setAction(signal.getAction());
+        order.setQuantity(signal.getQuantity());
+        order.setPrice(signal.getPrice());
+        order.setOrderType(signal.getOrderType());
+        order.setDarkPoolAllowed(signal.isDarkPoolAllowed());
+
+        int orderId = placeOrder(order);
+
+        if (orderId != -1) {
+            // Store the signal for stop loss placement
+            orderIdToSignalMap.put(orderId, signal);
+        }
     }
 
     private Contract createContract(String symbol) {
@@ -80,13 +106,27 @@ public class IBOrderExecutor {
         ibOrder.action(action);
 
         // Set smart routing based on market conditions
-        if (dpScanner.hasDarkPoolSupport(order.getSymbol()) && order.isDarkPoolAllowed()) {
-            configureDarkPoolOrder(ibOrder);
-        } else if (cbMonitor.allowAggressiveOrders(order.getSymbol())) {
-            configureAggressiveOrder(ibOrder);
+        if (order.getOrderType() == OrderType.MARKET) {
+            ibOrder.orderType("MKT");
+        } else if (order.getOrderType() == OrderType.LIMIT) {
+            ibOrder.orderType("LMT");
+            ibOrder.lmtPrice(order.getPrice());
+        } else if (order.getOrderType() == OrderType.STOP) {
+            ibOrder.orderType("STP");
+            ibOrder.auxPrice(order.getPrice());
+        } else if (order.getOrderType() == OrderType.BUY_STOP || order.getOrderType() == OrderType.SELL_STOP) {
+            ibOrder.orderType("STP");
+            ibOrder.auxPrice(order.getPrice());
         } else {
-            configurePassiveOrder(ibOrder);
+            if (dpScanner.hasDarkPoolSupport(order.getSymbol()) && order.isDarkPoolAllowed()) {
+                configureDarkPoolOrder(ibOrder);
+            } else if (cbMonitor.allowAggressiveOrders(order.getSymbol())) {
+                configureAggressiveOrder(ibOrder);
+            } else {
+                configurePassiveOrder(ibOrder);
+            }
         }
+
 
         ibOrder.totalQuantity(order.getQuantity());
         ibOrder.tif("GTC");
@@ -119,7 +159,29 @@ public class IBOrderExecutor {
         logger.info("Order ID {}: Status={}, Filled={}, Remaining={}, AvgFillPrice={}, LastFillPrice={}",
                 orderId, status, filled, remaining, avgFillPrice, lastFillPrice);
         orderIdToStatusMap.put(orderId, status);
-        // TODO: Add logic to update portfolio/positions based on fill status
+
+        if (status.equals("Filled")) {
+            Order order = orderIdToOrderMap.get(orderId);
+            if (order != null) {
+                portfolioManager.updatePosition(order.getSymbol(), (int) filled, avgFillPrice, order.getAction());
+
+                TradingSignal signal = orderIdToSignalMap.get(orderId);
+                if (signal != null && signal.getStopLossPrice() > 0) {
+                    placeStopLossOrder(signal);
+                }
+            }
+        }
+    }
+
+    private void placeStopLossOrder(TradingSignal signal) {
+        Order stopLossOrder = new Order();
+        stopLossOrder.setSymbol(signal.getSymbol());
+        stopLossOrder.setAction(signal.getAction() == TradeAction.BUY ? TradeAction.SELL : TradeAction.BUY);
+        stopLossOrder.setQuantity(signal.getQuantity());
+        stopLossOrder.setPrice(signal.getStopLossPrice());
+        stopLossOrder.setOrderType(com.ibkr.models.OrderType.STOP);
+        placeOrder(stopLossOrder);
+        logger.info("Placed stop loss order for signal: {}", signal);
     }
 
     // Method called by IBClient's openOrder callback

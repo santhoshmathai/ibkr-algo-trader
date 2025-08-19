@@ -50,6 +50,10 @@ public class OrbStrategy {
         logger.info("ORB daily state and buffers reset for symbol: {}", symbol);
     }
 
+    public ZoneId getMarketTimeZone() {
+        return marketTimeZone;
+    }
+
 
     /**
      * Processes a new 1-minute bar for a given symbol.
@@ -108,6 +112,11 @@ public class OrbStrategy {
         state.openingRangeVolume = totalVolume;
         state.rangeDefined = true;
 
+        if (state.avgOpeningRangeVolume14day > 0) {
+            state.relativeVolume = totalVolume / state.avgOpeningRangeVolume14day;
+        }
+
+
         // Determine candle direction
         if (close > open) {
             state.candleDirection = OrbStrategyState.CandleDirection.BULLISH;
@@ -124,7 +133,7 @@ public class OrbStrategy {
     /**
      * Generates the trading signal after the opening range is defined.
      */
-    private TradingSignal generateTradingSignal(String symbol) {
+    public TradingSignal generateTradingSignal(String symbol) {
         OrbStrategyState state = getState(symbol);
         if (!state.rangeDefined || state.stopOrderPlaced) {
             return null; // Should not happen if called correctly, but as a safeguard.
@@ -178,6 +187,7 @@ public class OrbStrategy {
                 .stopLossPrice(stopLossPrice) // Assuming SL can be set
                 .quantity(quantity)
                 .strategyId("ORB_Revised")
+                .relativeVolume(state.relativeVolume)
                 .build();
     }
 

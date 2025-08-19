@@ -13,10 +13,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.ibkr.core.TradingEngine;
+
 public class TickAggregator {
     private static final Logger logger = LoggerFactory.getLogger(TickAggregator.class);
     private final Map<Integer, Tick> instrumentTicks = new ConcurrentHashMap<>();
     private final InstrumentRegistry registry;
+    private TradingEngine tradingEngine;
 
     // Fields for 1-minute aggregation
     private final Map<Integer, OHLC> currentMinuteOhlc = new ConcurrentHashMap<>();
@@ -54,6 +57,10 @@ public class TickAggregator {
 
     public TickAggregator(InstrumentRegistry registry) {
         this.registry = registry;
+    }
+
+    public void setTradingEngine(TradingEngine tradingEngine) {
+        this.tradingEngine = tradingEngine;
     }
 
     private void setTickMode(Tick tick, Tick.Mode newMode) {
@@ -214,6 +221,10 @@ public class TickAggregator {
                          logger.info("Completed 1-min bar for {}: OHLC={}, Volume=0. VWAP not calculated.", tick.getSymbol(), completedOhlc);
                     }
                     tick.setLastTradedTime(new Date(previousBarMinuteStart + 59999)); // End of the completed minute
+
+                    if (tradingEngine != null) {
+                        tradingEngine.onOneMinuteBarClose(tick.getSymbol(), completedOhlc, completedVolume, previousBarMinuteStart, tick);
+                    }
                 }
             }
 

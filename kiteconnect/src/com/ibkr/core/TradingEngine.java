@@ -14,6 +14,7 @@ import com.ibkr.strategy.common.OrbStrategyParameters; // +OrbStrategy
 import com.ibkr.strategy.common.VolumeSpikeStrategyParameters;
 import com.ibkr.AppContext; // +OrbStrategy
 import com.ibkr.analysis.IntradayPriceActionAnalyzer; // +PriceAction
+import com.ibkr.screener.StockScreener;
 import com.ibkr.models.PriceActionSignal; // +PriceAction
 import com.ibkr.alert.TradeAlertLogger; // +Alerts
 import com.ibkr.strategy.orb.OrbStrategyState;
@@ -28,6 +29,10 @@ import com.ibkr.models.OpeningMarketTrend; // New import
 import org.slf4j.Logger; // Added
 import org.slf4j.LoggerFactory; // Added
 
+import java.time.Instant;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map; // New import
@@ -51,8 +56,16 @@ public class TradingEngine {
     private final IntradayPriceActionAnalyzer intradayPriceActionAnalyzer; // +PriceAction
     private final HistoricalVolumeService historicalVolumeService;
     private final VolumeSpikeAnalyzer volumeSpikeAnalyzer;
+    private final IBOrderExecutor ibOrderExecutor;
+    private final StockScreener stockScreener;
+    private final PortfolioManager portfolioManager;
+    private final HistoricalDataService historicalDataService;
+
 
     // Data structures for ORB Strategy support
+    private List<StockScreener.ScreeningResult> preScreenedStocks;
+    private final Map<String, Long> openingRangeVolumes = new ConcurrentHashMap<>();
+
     /** Inner public static class to hold OHLC and Volume for a bar, accessible by DataUtils */
     public static class BarData {
         public final OHLC ohlc;
@@ -69,19 +82,21 @@ public class TradingEngine {
     private final Map<String, PreviousDayData> dailyPdhCache = new ConcurrentHashMap<>(); // +OrbStrategy
 
 
-    public TradingEngine(AppContext appContext, VWAPAnalyzer vwapAnalyzer, VolumeAnalyzer volumeAnalyzer,
-                         CircuitBreakerMonitor circuitBreakerMonitor, DarkPoolScanner darkPoolScanner,
-                         MarketSentimentAnalyzer marketSentimentAnalyzer, SectorStrengthAnalyzer sectorStrengthAnalyzer,
-                         InstrumentRegistry instrumentRegistry, TickAggregator tickAggregator) {
+    public TradingEngine(AppContext appContext, IBOrderExecutor ibOrderExecutor, StockScreener stockScreener, PortfolioManager portfolioManager, HistoricalDataService historicalDataService) {
         this.appContext = appContext;
-        this.vwapAnalyzer = vwapAnalyzer;
-        this.volumeAnalyzer = volumeAnalyzer;
-        this.circuitBreakerMonitor = circuitBreakerMonitor;
-        this.darkPoolScanner = darkPoolScanner;
-        this.marketSentimentAnalyzer = marketSentimentAnalyzer;
-        this.sectorStrengthAnalyzer = sectorStrengthAnalyzer;
-        this.instrumentRegistry = instrumentRegistry;
-        this.tickAggregator = tickAggregator;
+        this.ibOrderExecutor = ibOrderExecutor;
+        this.stockScreener = stockScreener;
+        this.portfolioManager = portfolioManager;
+        this.historicalDataService = historicalDataService;
+        this.instrumentRegistry = appContext.getInstrumentRegistry();
+        this.tickAggregator = appContext.getTickAggregator();
+        this.marketSentimentAnalyzer = appContext.getMarketSentimentAnalyzer();
+        this.vwapAnalyzer = new VWAPAnalyzer();
+        this.volumeAnalyzer = new VolumeAnalyzer();
+        this.circuitBreakerMonitor = new CircuitBreakerMonitor();
+        this.darkPoolScanner = new DarkPoolScanner();
+        this.sectorStrengthAnalyzer = new SectorStrengthAnalyzer(instrumentRegistry);
+
 
         // Initialize ORB Strategy components
         this.orbStrategyParameters = new OrbStrategyParameters(); // Using default parameters for now
@@ -106,6 +121,19 @@ public class TradingEngine {
         logger.info("TradingEngine initialized, including OrbStrategy, IntradayPriceActionAnalyzer, and VolumeSpikeAnalyzer.");
     }
 
+    public void runPreMarketScreen() {
+        logger.info("Running pre-market screen...");
+        stockScreener.runPreMarketScreen(appContext.getTop100USStocks())
+                .thenAccept(results -> {
+                    this.preScreenedStocks = results;
+                    logger.info("Pre-market screen completed. {} stocks passed.", results.size());
+                })
+                .exceptionally(ex -> {
+                    logger.error("Error running pre-market screen", ex);
+                    return null;
+                });
+    }
+
     /**
      * Initializes strategies for a given symbol at the start of a trading day.
      * This includes resetting daily state for strategies like ORB and caching necessary daily data.
@@ -127,6 +155,18 @@ public class TradingEngine {
             orbStrategy.resetDailyState(symbol);
             orbStrategy.setPreviousDayHigh(symbol, pdhData.getPreviousHigh());
             logger.info("ORB Strategy daily state reset and PDH set for symbol: {}", symbol);
+
+            // Fetch historical data for relative volume calculation
+            historicalDataService.getOpeningRangeVolumeHistory(symbol, 14, orbStrategyParameters.getOrbTimeframeMinutes(), "09:30:00")
+                    .thenAccept(history -> {
+                        double avgVolume = history.values().stream().mapToLong(l -> l).average().orElse(0.0);
+                        orbStrategy.getState(symbol).avgOpeningRangeVolume14day = avgVolume;
+                        logger.info("Set 14-day avg opening range volume for {}: {}", symbol, avgVolume);
+                    })
+                    .exceptionally(ex -> {
+                        logger.error("Failed to get opening range volume history for {}", symbol, ex);
+                        return null;
+                    });
         }
 
         // Reset other strategy states here if needed
@@ -227,16 +267,26 @@ public class TradingEngine {
             logger.warn("Market depth is null in latestTickForDepth for symbol: {}", symbol);
         }
 
+        // Collect opening range volume
+        if (orbStrategy != null) {
+            ZoneId marketTimeZone = orbStrategy.getMarketTimeZone();
+            ZonedDateTime barTime = ZonedDateTime.ofInstant(Instant.ofEpochMilli(barTimestamp), marketTimeZone);
+            LocalTime marketOpenTime = LocalTime.of(9, 30);
+            ZonedDateTime orbStartTime = barTime.with(marketOpenTime);
+            ZonedDateTime orbEndTime = orbStartTime.plusMinutes(orbStrategyParameters.getOrbTimeframeMinutes());
+
+            if (!barTime.isBefore(orbStartTime) && barTime.isBefore(orbEndTime)) {
+                openingRangeVolumes.merge(symbol, volumeForBar, Long::sum);
+            }
+        }
+
         // Call OrbStrategy
         if (orbStrategy != null) {
             // Pass the OHLC part of the new bar to the strategy
             TradingSignal orbSignal = orbStrategy.processBar(symbol, ohlcPortion, barTimestamp, bidDepth, askDepth, volumeData);
             if (orbSignal != null && orbSignal.getAction() != TradeAction.HOLD) {
                 logger.info("TradingEngine: ORB Strategy generated signal for {}: {}", symbol, orbSignal);
-                // Potentially return orbSignal here if it should take precedence immediately,
-                // or let PriceActionAnalyzer run and decide later.
-                // For now, let ORB signal take precedence if generated.
-                return orbSignal;
+                // The signal is not processed here anymore. It will be processed by the screener.
             }
         }
 
@@ -532,5 +582,56 @@ public class TradingEngine {
         }
         logger.debug("No 1-minute bar history found for symbol {} when requesting last completed bar.", symbol);
         return null;
+    }
+
+    public void onOpeningRangeEnd() {
+        logger.info("Opening range end triggered. Running opening range screen...");
+        if (preScreenedStocks == null || preScreenedStocks.isEmpty()) {
+            logger.warn("No pre-screened stocks to run opening range screen on.");
+            return;
+        }
+
+        stockScreener.runOpeningRangeScreen(preScreenedStocks, openingRangeVolumes)
+                .thenAccept(results -> {
+                    logger.info("Opening range screen completed. {} stocks passed.", results.size());
+                    for (StockScreener.ScreeningResult result : results) {
+                        OrbStrategyState state = orbStrategy.getState(result.symbol);
+                        if (state.candleDirection == OrbStrategyState.CandleDirection.UNDEFINED || state.candleDirection == OrbStrategyState.CandleDirection.DOJI) {
+                            continue;
+                        }
+
+                        TradingSignal signal = orbStrategy.generateTradingSignal(result.symbol);
+                        if (signal != null) {
+                            ibOrderExecutor.placeOrder(signal);
+                        }
+                    }
+                })
+                .exceptionally(ex -> {
+                    logger.error("Error running opening range screen", ex);
+                    return null;
+                });
+    }
+
+    public void closeAllPositions() {
+        logger.info("Closing all open positions...");
+        for (TradingPosition position : portfolioManager.getOpenPositions()) {
+            if (position.getQuantity() == 0) {
+                continue;
+            }
+
+            TradeAction action = position.getQuantity() > 0 ? TradeAction.SELL : TradeAction.BUY;
+            TradingSignal signal = new TradingSignal.Builder()
+                    .symbol(position.getSymbol())
+                    .action(action)
+                    .quantity(Math.abs(position.getQuantity()))
+                    .orderType(com.ibkr.models.OrderType.MARKET)
+                    .build();
+            ibOrderExecutor.placeOrder(signal);
+            logger.info("Placed closing order for symbol: {}", position.getSymbol());
+        }
+    }
+
+    public OrbStrategyParameters getOrbStrategyParameters() {
+        return orbStrategyParameters;
     }
 }

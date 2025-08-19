@@ -11,11 +11,14 @@ import com.ibkr.core.IBConnectionManager;
 import com.ibkr.core.TradingEngine;
 import com.ibkr.data.InstrumentRegistry;
 import com.ibkr.data.TickAggregator;
+import com.ibkr.data.HistoricalDataService;
 import com.ibkr.liquidity.DarkPoolScanner;
 import com.ibkr.risk.LiquidityMonitor;
 import com.ibkr.safeguards.CircuitBreakerMonitor;
+import com.ibkr.screener.StockScreener;
 import com.ibkr.strategy.TickProcessor;
 import com.ibkr.data.MarketDataHandler;
+import com.ibkr.models.PortfolioManager;
 import com.ibkr.models.PreviousDayData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +26,7 @@ import org.slf4j.LoggerFactory;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Duration;
 import java.util.*;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,11 +35,15 @@ import java.time.ZonedDateTime;
 import java.time.ZoneId;
 import java.time.LocalTime;
 import java.time.DayOfWeek;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class AppContext {
     private static final Logger logger = LoggerFactory.getLogger(AppContext.class);
     private final AtomicInteger nextRequestId = new AtomicInteger(1001);
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
     // Core Components
     private final InstrumentRegistry instrumentRegistry;
@@ -48,6 +56,9 @@ public class AppContext {
     private final MarketDataHandler marketDataHandler;
     private final TradingEngine tradingEngine;
     private final TickProcessor tickProcessor;
+    private final HistoricalDataService historicalDataService;
+    private final StockScreener stockScreener;
+    private final PortfolioManager portfolioManager;
 
     // Analyzers needed by components other than the old TradingEngine logic
     private final MarketSentimentAnalyzer marketSentimentAnalyzer;
@@ -96,8 +107,9 @@ public class AppContext {
         this.liquidityMonitor = new LiquidityMonitor();
 
         // Level 1: Components that depend on Level 0
-        this.ibOrderExecutor = new IBOrderExecutor(this.circuitBreakerMonitor, this.darkPoolScanner, this.instrumentRegistry);
-        this.tradingEngine = new TradingEngine(this, this.ibOrderExecutor);
+        this.portfolioManager = new PortfolioManager();
+        this.ibOrderExecutor = new IBOrderExecutor(this.circuitBreakerMonitor, this.darkPoolScanner, this.instrumentRegistry, this.portfolioManager);
+        this.tradingEngine = new TradingEngine(this, ibOrderExecutor, stockScreener, portfolioManager, historicalDataService);
 
         // TickProcessor is now simplified, it just needs to know about the engine to pass it bars.
         // The nulls are placeholders for obsolete dependencies (breakoutSignalGenerator, riskManager).
@@ -105,6 +117,10 @@ public class AppContext {
 
         // Level 2: IBClient depends on TickProcessor
         this.ibClient = new IBClient(this, this.instrumentRegistry, this.tickAggregator, this.tickProcessor, this.ibOrderExecutor, this.marketDataHandler);
+        this.tickAggregator.setTradingEngine(this.tradingEngine);
+        this.historicalDataService = new HistoricalDataService(this.ibClient, this.instrumentRegistry);
+        this.stockScreener = new StockScreener(this.historicalDataService);
+
 
         // Level 3: Components that depend on IBClient
         this.clientSocket = this.ibClient.getClientSocket();
@@ -115,6 +131,31 @@ public class AppContext {
 
         // Final Step: Initialize TradingEngine services that required the IBClient, breaking the circular dependency.
         this.tradingEngine.initializeServices(this.ibClient, this.instrumentRegistry);
+
+        long orbTimeframeMinutes = tradingEngine.getOrbStrategyParameters().getOrbTimeframeMinutes();
+        this.scheduler.schedule(() -> {
+            try {
+                tradingEngine.onOpeningRangeEnd();
+            } catch (Exception e) {
+                logger.error("Error executing scheduled task 'onOpeningRangeEnd'", e);
+            }
+        }, orbTimeframeMinutes, TimeUnit.MINUTES);
+
+        // Schedule end-of-day task
+        ZonedDateTime now = ZonedDateTime.now(ZoneId.of("America/New_York"));
+        ZonedDateTime endOfDay = now.with(LocalTime.of(16, 0));
+        if (now.isAfter(endOfDay)) {
+            endOfDay = endOfDay.plusDays(1);
+        }
+        long delay = Duration.between(now, endOfDay).toMillis();
+        this.scheduler.schedule(() -> {
+            try {
+                tradingEngine.closeAllPositions();
+            } catch (Exception e) {
+                logger.error("Error executing scheduled task 'closeAllPositions'", e);
+            }
+        }, delay, TimeUnit.MILLISECONDS);
+
 
         logger.info("AppContext initialized successfully with new refactored flow.");
     }
@@ -135,6 +176,9 @@ public class AppContext {
     public TradingEngine getTradingEngine() { return tradingEngine; }
     public SupportResistanceAnalyzer getSupportResistanceAnalyzer() { return supportResistanceAnalyzer; }
     public MarketSentimentAnalyzer getMarketSentimentAnalyzer() { return marketSentimentAnalyzer; }
+    public HistoricalDataService getHistoricalDataService() { return historicalDataService; }
+    public StockScreener getStockScreener() { return stockScreener; }
+    public PortfolioManager getPortfolioManager() { return portfolioManager; }
 
     // --- Other methods ---
     public int getNextRequestId() { return nextRequestId.getAndIncrement(); }
