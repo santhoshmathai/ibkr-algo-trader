@@ -63,6 +63,12 @@ public class AppContext {
     // Analyzers needed by components other than the old TradingEngine logic
     private final MarketSentimentAnalyzer marketSentimentAnalyzer;
     private final SupportResistanceAnalyzer supportResistanceAnalyzer;
+    private final SectorStrengthAnalyzer sectorStrengthAnalyzer;
+    private final com.ibkr.indicators.VWAPAnalyzer vwapAnalyzer;
+    private final com.ibkr.indicators.VolumeAnalyzer volumeAnalyzer;
+    private final com.ibkr.risk.RiskManager riskManager;
+    private final com.ibkr.signal.BreakoutSignalGenerator breakoutSignalGenerator;
+
 
     // Liquidity and Safeguards that are still potentially useful or needed by IBOrderExecutor
     private final CircuitBreakerMonitor circuitBreakerMonitor;
@@ -108,15 +114,19 @@ public class AppContext {
         this.circuitBreakerMonitor = new CircuitBreakerMonitor();
         this.darkPoolScanner = new DarkPoolScanner();
         this.liquidityMonitor = new LiquidityMonitor();
+        this.vwapAnalyzer = new com.ibkr.indicators.VWAPAnalyzer();
+        this.volumeAnalyzer = new com.ibkr.indicators.VolumeAnalyzer();
+        this.sectorStrengthAnalyzer = new SectorStrengthAnalyzer(getSectorToStocks(), getSymbolToSector());
 
         // Level 1: Components that depend on Level 0
+        this.riskManager = new com.ibkr.risk.RiskManager(this.liquidityMonitor, this.vwapAnalyzer);
+        this.breakoutSignalGenerator = new com.ibkr.signal.BreakoutSignalGenerator(this.vwapAnalyzer, this.volumeAnalyzer, this.sectorStrengthAnalyzer, this.supportResistanceAnalyzer);
         this.portfolioManager = new PortfolioManager();
         this.ibOrderExecutor = new IBOrderExecutor(this.circuitBreakerMonitor, this.darkPoolScanner, this.instrumentRegistry, this.portfolioManager);
-        this.tradingEngine = new TradingEngine(this, ibOrderExecutor, portfolioManager);
+        this.tradingEngine = new TradingEngine(this, ibOrderExecutor, portfolioManager, this.sectorStrengthAnalyzer);
 
         // TickProcessor is now simplified, it just needs to know about the engine to pass it bars.
-        // The nulls are placeholders for obsolete dependencies (breakoutSignalGenerator, riskManager).
-        this.tickProcessor = new TickProcessor(null, null, this.tradingEngine, this.ibOrderExecutor, this);
+        this.tickProcessor = new TickProcessor(this.breakoutSignalGenerator, this.riskManager, this.tradingEngine, this.ibOrderExecutor, this);
 
         // Level 2: IBClient depends on TickProcessor
         this.ibClient = new IBClient(this, this.instrumentRegistry, this.tickAggregator, this.tickProcessor, this.ibOrderExecutor, this.marketDataHandler);
