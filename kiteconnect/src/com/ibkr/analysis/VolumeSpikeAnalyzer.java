@@ -12,21 +12,19 @@ import java.util.concurrent.ConcurrentHashMap;
  * Analyzes real-time tick data to detect significant volume spikes
  * based on a projection against the average daily volume.
  */
-import com.ibkr.strategy.common.VolumeSpikeStrategyParameters;
-
 public class VolumeSpikeAnalyzer {
 
     private final HistoricalVolumeService historicalVolumeService;
-    private final VolumeSpikeStrategyParameters params;
+
 
     // Maps to track real-time volume
     private final Map<String, Long> currentIntervalVolume = new ConcurrentHashMap<>();
     private final Map<String, Integer> currentIntervalIndex = new ConcurrentHashMap<>();
     private final Set<String> activeSpikeSymbols = ConcurrentHashMap.newKeySet();
 
-    public VolumeSpikeAnalyzer(HistoricalVolumeService historicalVolumeService, VolumeSpikeStrategyParameters params) {
+    public VolumeSpikeAnalyzer(HistoricalVolumeService historicalVolumeService) {
         this.historicalVolumeService = historicalVolumeService;
-        this.params = params;
+
     }
 
     /**
@@ -60,8 +58,8 @@ public class VolumeSpikeAnalyzer {
         // Check for spike using the corrected logic
         double averageDailyVolume = historicalVolumeService.getAverageDailyVolume(symbol);
         if (averageDailyVolume > 0) {
-            long projectedDailyVolume = updatedVolume * params.getTradingIntervalsPerDay();
-            if (projectedDailyVolume > (averageDailyVolume * params.getVolumeSpikeThreshold())) {
+            long projectedDailyVolume = updatedVolume * 390; // 390 intervals of 1 minute in a trading day
+            if (projectedDailyVolume > (averageDailyVolume * 2.0)) { // Spike threshold of 2.0
                 if (activeSpikeSymbols.add(symbol)) {
                     System.out.println("INFO: Volume spike detected for " + symbol + ". Projected Volume: " + projectedDailyVolume + ", Avg Daily Volume: " + String.format("%.2f", averageDailyVolume));
                 }
@@ -78,7 +76,7 @@ public class VolumeSpikeAnalyzer {
 
     private int getCurrentIntervalIndex() {
         LocalDateTime now = LocalDateTime.now();
-        int intervalMinutes = params.getVolumeAggregationIntervalMinutes();
+        int intervalMinutes = 15; // 15-minute intervals
         if (intervalMinutes <= 0) {
             return now.getHour() * 60 + now.getMinute(); // Fallback to 1-minute intervals
         }
