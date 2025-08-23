@@ -109,7 +109,17 @@ public class IBKRApiService implements EWrapper {
             // Error codes that indicate a connection problem, see https://interactivebrokers.github.io/tws-api/message_codes.html
             if (errorCode == 502 || errorCode == 504 || errorCode == 509) {
                 connectionFuture.completeExceptionally(new RuntimeException("IBKR Connection Error: " + errorMsg));
+                return; // Connection failed, no need to process other errors
             }
+        }
+
+        // According to IBKR, codes 2100-2178 are informational/warning messages, not fatal errors.
+        // We should log them but not fail the operation.
+        boolean isWarning = (errorCode >= 2100 && errorCode <= 2178);
+
+        if (isWarning) {
+            System.out.println("IBKR API Warning. Id: " + id + ", Code: " + errorCode + ", Msg: " + errorMsg);
+            return;
         }
 
         CompletableFuture<Double> future = historicalDataFutures.remove(id);
