@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 
 public class IBKRApiService implements EWrapper {
 
@@ -15,6 +16,7 @@ public class IBKRApiService implements EWrapper {
     private final EReaderSignal signal;
     private int nextReqId = 1;
 
+    private final CompletableFuture<Void> connectionFuture = new CompletableFuture<>();
     private final Map<Integer, CompletableFuture<Double>> historicalDataFutures = new ConcurrentHashMap<>();
     private final Map<Integer, List<Bar>> historicalDataBars = new ConcurrentHashMap<>();
 
@@ -38,6 +40,10 @@ public class IBKRApiService implements EWrapper {
                 }
             }
         }).start();
+    }
+
+    public void awaitConnection() throws ExecutionException, InterruptedException {
+        connectionFuture.get();
     }
 
     public void disconnect() {
@@ -99,6 +105,13 @@ public class IBKRApiService implements EWrapper {
 
     @Override
     public void error(int id, int errorCode, String errorMsg) {
+        if (!connectionFuture.isDone()) {
+            // Error codes that indicate a connection problem, see https://interactivebrokers.github.io/tws-api/message_codes.html
+            if (errorCode == 502 || errorCode == 504 || errorCode == 509) {
+                connectionFuture.completeExceptionally(new RuntimeException("IBKR Connection Error: " + errorMsg));
+            }
+        }
+
         CompletableFuture<Double> future = historicalDataFutures.remove(id);
         if (future != null) {
             future.completeExceptionally(new RuntimeException("IBKR API Error. Id: " + id + ", Code: " + errorCode + ", Msg: " + errorMsg));
@@ -164,6 +177,7 @@ public class IBKRApiService implements EWrapper {
 
     @Override
     public void nextValidId(int orderId) {
+        connectionFuture.complete(null);
     }
 
     @Override
