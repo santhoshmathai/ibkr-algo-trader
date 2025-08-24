@@ -1,6 +1,6 @@
 package com.ibkr.data;
 
-import com.ibkr.IBKRApiService;
+import com.ibkr.service.MarketDataService;
 import com.ibkr.strategy.common.VolumeSpikeStrategyParameters;
 
 import java.util.List;
@@ -12,10 +12,10 @@ import java.util.concurrent.ExecutionException;
 public class HistoricalVolumeService {
 
     private final Map<String, Double> averageDailyVolume = new ConcurrentHashMap<>();
-    private final IBKRApiService ibkrApiService;
+    private final MarketDataService marketDataService;
 
-    public HistoricalVolumeService(IBKRApiService ibkrApiService) {
-        this.ibkrApiService = ibkrApiService;
+    public HistoricalVolumeService(MarketDataService marketDataService) {
+        this.marketDataService = marketDataService;
     }
 
     public void calculateAverageVolumes(List<String> symbols) {
@@ -23,7 +23,7 @@ public class HistoricalVolumeService {
 
         Map<String, CompletableFuture<Double>> futures = new ConcurrentHashMap<>();
         for (String symbol : symbols) {
-            futures.put(symbol, ibkrApiService.getAverageDailyVolume(symbol));
+            futures.put(symbol, marketDataService.getAverageDailyVolume(symbol));
         }
 
         for (Map.Entry<String, CompletableFuture<Double>> entry : futures.entrySet()) {
@@ -44,39 +44,5 @@ public class HistoricalVolumeService {
 
     public double getAverageDailyVolume(String symbol) {
         return averageDailyVolume.getOrDefault(symbol, 0.0);
-    }
-
-    public static void main(String[] args) {
-        System.out.println("Running HistoricalVolumeService self-test...");
-        IBKRApiService ibkrApiService = new IBKRApiService();
-        try {
-            // 1. Setup
-            ibkrApiService.connect("127.0.0.1", 7497, 0); // Connect to TWS or Gateway
-            System.out.println("Waiting for IBKR API connection to be established...");
-            ibkrApiService.awaitConnection();
-            System.out.println("IBKR API connection established.");
-
-            HistoricalVolumeService service = new HistoricalVolumeService(ibkrApiService);
-            List<String> symbols = java.util.Collections.singletonList("AAPL");
-
-            // 2. Execute
-            service.calculateAverageVolumes(symbols);
-            double result = service.getAverageDailyVolume("AAPL");
-
-            // 3. Assert
-            // The expected value will depend on the actual data from IBKR.
-            // For this test, we just check if the result is greater than 0.
-            if (result <= 0) {
-                throw new AssertionError("Expected a positive average volume, but got " + result);
-            }
-            System.out.println("Self-test PASSED! Average daily volume for AAPL is " + result);
-
-        } catch (Exception e) {
-            System.err.println("Self-test FAILED!");
-            e.printStackTrace();
-        } finally {
-            System.out.println("Disconnecting from IBKR API.");
-            ibkrApiService.disconnect();
-        }
     }
 }

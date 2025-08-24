@@ -6,16 +6,17 @@ import com.ib.client.EReaderSignal;
 import com.ibkr.analysis.MarketSentimentAnalyzer;
 import com.ibkr.analysis.SectorStrengthAnalyzer;
 import com.ibkr.analysis.SupportResistanceAnalyzer;
-import com.ibkr.core.IBClient;
-import com.ibkr.core.IBConnectionManager;
 import com.ibkr.core.TradingEngine;
 import com.ibkr.data.InstrumentRegistry;
 import com.ibkr.data.TickAggregator;
-import com.ibkr.data.HistoricalDataService;
 import com.ibkr.liquidity.DarkPoolScanner;
 import com.ibkr.risk.LiquidityMonitor;
 import com.ibkr.safeguards.CircuitBreakerMonitor;
 import com.ibkr.screener.StockScreener;
+import com.ibkr.service.IbkrMarketDataService;
+import com.ibkr.service.IbkrOrderService;
+import com.ibkr.service.MarketDataService;
+import com.ibkr.service.OrderService;
 import com.ibkr.strategy.TickProcessor;
 import com.ibkr.data.MarketDataHandler;
 import com.ibkr.models.PortfolioManager;
@@ -50,15 +51,13 @@ public class AppContext {
     // Core Components
     private final InstrumentRegistry instrumentRegistry;
     private final TickAggregator tickAggregator;
-    private final IBConnectionManager ibConnectionManager;
     private final EClientSocket clientSocket;
     private final EReaderSignal readerSignal;
     private final IBOrderExecutor ibOrderExecutor;
-    private final IBClient ibClient;
+    private final MarketDataService marketDataService;
     private final MarketDataHandler marketDataHandler;
     private final TradingEngine tradingEngine;
     private final TickProcessor tickProcessor;
-    private final HistoricalDataService historicalDataService;
     private final StockScreener stockScreener;
     private final PortfolioManager portfolioManager;
 
@@ -127,27 +126,29 @@ public class AppContext {
         this.breakoutSignalGenerator = new com.ibkr.signal.BreakoutSignalGenerator(this.vwapAnalyzer, this.volumeAnalyzer, this.sectorStrengthAnalyzer, this.supportResistanceAnalyzer);
         this.portfolioManager = new PortfolioManager();
         this.ibOrderExecutor = new IBOrderExecutor(this.circuitBreakerMonitor, this.darkPoolScanner, this.instrumentRegistry, this.portfolioManager);
-        this.tradingEngine = new TradingEngine(this, ibOrderExecutor, portfolioManager, this.sectorStrengthAnalyzer);
+        OrderService orderService = new IbkrOrderService(this.ibOrderExecutor);
+
+        // Level 2: Create services
+        this.marketDataService = new IbkrMarketDataService(this, this.instrumentRegistry, this.tickAggregator, null, this.marketDataHandler); // TickProcessor is null for now
+
+        this.tradingEngine = new TradingEngine(this, orderService, this.marketDataService, portfolioManager, this.sectorStrengthAnalyzer);
 
         // TickProcessor is now simplified, it just needs to know about the engine to pass it bars.
-        this.tickProcessor = new TickProcessor(this.breakoutSignalGenerator, this.riskManager, this.tradingEngine, this.ibOrderExecutor, this);
+        this.tickProcessor = new TickProcessor(this.breakoutSignalGenerator, this.riskManager, this.tradingEngine, orderService, this);
+        // Now set the tick processor in the market data service
+        ((IbkrMarketDataService)this.marketDataService).setTickProcessor(this.tickProcessor);
 
-        // Level 2: IBClient depends on TickProcessor
-        this.ibClient = new IBClient(this, this.instrumentRegistry, this.tickAggregator, this.tickProcessor, this.ibOrderExecutor, this.marketDataHandler);
         this.tickAggregator.setTradingEngine(this.tradingEngine);
-        this.historicalDataService = new HistoricalDataService(this.ibClient, this.instrumentRegistry, this.meterRegistry);
-        this.stockScreener = new StockScreener(this.historicalDataService);
+        this.stockScreener = new StockScreener(this.marketDataService);
 
 
-        // Level 3: Components that depend on IBClient
-        this.clientSocket = this.ibClient.getClientSocket();
-        this.readerSignal = this.ibClient.getReaderSignal();
+        // Level 3: Components that depend on IbkrMarketDataService
+        this.clientSocket = ((IbkrMarketDataService)this.marketDataService).getClientSocket();
+        this.readerSignal = ((IbkrMarketDataService)this.marketDataService).getReaderSignal();
         this.ibOrderExecutor.setClientSocket(this.clientSocket);
-        this.ibConnectionManager = new IBConnectionManager(this.clientSocket);
-        this.ibClient.setConnectionManager(this.ibConnectionManager);
 
-        // Final Step: Initialize TradingEngine services that required the IBClient, breaking the circular dependency.
-        this.tradingEngine.initializeServices(this.historicalDataService, this.stockScreener);
+        // Final Step: Initialize TradingEngine services that required the IbkrMarketDataService, breaking the circular dependency.
+        this.tradingEngine.initializeServices(this.marketDataService, this.stockScreener);
 
         long orbTimeframeMinutes = tradingEngine.getOrbStrategyParameters().getOrbTimeframeMinutes();
         this.scheduler.schedule(() -> {
@@ -199,9 +200,8 @@ public class AppContext {
     }
 
     // --- Getters for major components ---
-    public IBClient getIbClient() { return ibClient; }
+    public MarketDataService getMarketDataService() { return marketDataService; }
     public Set<String> getTop100USStocks() { return top100USStocks; }
-    public IBConnectionManager getIbConnectionManager() { return ibConnectionManager; }
     public InstrumentRegistry getInstrumentRegistry() { return instrumentRegistry; }
     public TickAggregator getTickAggregator() { return tickAggregator; }
     public TickProcessor getTickProcessor() { return tickProcessor; }
@@ -209,7 +209,6 @@ public class AppContext {
     public TradingEngine getTradingEngine() { return tradingEngine; }
     public SupportResistanceAnalyzer getSupportResistanceAnalyzer() { return supportResistanceAnalyzer; }
     public MarketSentimentAnalyzer getMarketSentimentAnalyzer() { return marketSentimentAnalyzer; }
-    public HistoricalDataService getHistoricalDataService() { return historicalDataService; }
     public StockScreener getStockScreener() { return stockScreener; }
     public PortfolioManager getPortfolioManager() { return portfolioManager; }
     public Map<String, List<String>> getSectorToStocks() { return sectorToStocks; }
@@ -251,8 +250,8 @@ public class AppContext {
 
     public void shutdown() {
         logger.info("Shutting down AppContext...");
-        if (this.ibClient != null) {
-            this.ibClient.shutdown();
+        if (this.marketDataService instanceof IbkrMarketDataService) {
+            ((IbkrMarketDataService) this.marketDataService).shutdown();
         }
         if (this.marketDataHandler != null) {
             this.marketDataHandler.shutdown();

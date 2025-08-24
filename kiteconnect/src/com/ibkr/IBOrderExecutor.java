@@ -73,6 +73,15 @@ public class IBOrderExecutor {
         return orderId;
     }
 
+    public void cancelOrder(int orderId) {
+        if (this.clientSocket == null) {
+            logger.error("EClientSocket is not set. Cannot cancel order: {}", orderId);
+            return;
+        }
+        this.clientSocket.cancelOrder(orderId);
+        logger.info("Cancelled IB order #{}", orderId);
+    }
+
     public void placeOrder(TradingSignal signal) {
         Order order = new Order();
         order.setSymbol(signal.getSymbol());
