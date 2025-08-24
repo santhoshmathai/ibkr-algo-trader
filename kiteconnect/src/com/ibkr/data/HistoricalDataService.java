@@ -1,7 +1,8 @@
 package com.ibkr.data;
 
 import com.ib.client.Contract;
-import com.ibkr.core.IBClient;
+import com.ibkr.service.MarketDataService;
+import com.ibkr.service.MarketDataService;
 import com.zerodhatech.models.HistoricalData;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -24,7 +25,7 @@ import java.util.stream.Collectors;
 public class HistoricalDataService {
 
     private static final Logger logger = LoggerFactory.getLogger(HistoricalDataService.class);
-    private final IBClient ibClient;
+    private final MarketDataService marketDataService;
     private final InstrumentRegistry instrumentRegistry;
     private final MeterRegistry meterRegistry;
 
@@ -38,8 +39,8 @@ public class HistoricalDataService {
     private final Timer dailyDataTimer;
     private final Timer openingRangeTimer;
 
-    public HistoricalDataService(IBClient ibClient, InstrumentRegistry instrumentRegistry, MeterRegistry meterRegistry) {
-        this.ibClient = ibClient;
+    public HistoricalDataService(MarketDataService marketDataService, InstrumentRegistry instrumentRegistry, MeterRegistry meterRegistry) {
+        this.marketDataService = marketDataService;
         this.instrumentRegistry = instrumentRegistry;
         this.meterRegistry = meterRegistry;
 
@@ -97,7 +98,7 @@ public class HistoricalDataService {
 
             logger.info("Requesting daily historical data for {}: {} days", symbol, days);
 
-            CompletableFuture<List<HistoricalData>> result = ibClient.requestHistoricalData(
+            CompletableFuture<List<HistoricalData>> result = marketDataService.requestHistoricalData(
                     contract, endDateTime, durationStr, barSizeSetting, whatToShow, useRTH, formatDate);
 
             // Record success metrics when completed
@@ -144,7 +145,7 @@ public class HistoricalDataService {
 
             logger.info("Requesting 1-min historical data for {} to calculate opening range volume for last {} days", symbol, days);
 
-            CompletableFuture<Map<String, Long>> result = ibClient.requestHistoricalData(
+            CompletableFuture<Map<String, Long>> result = marketDataService.requestHistoricalData(
                     contract, endDateTime, durationStr, barSizeSetting, whatToShow, useRTH, formatDate)
                     .thenApply(bars -> processOpeningRangeBars(bars, timeframeMinutes, marketOpenTime, symbol));
 

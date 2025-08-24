@@ -1,0 +1,73 @@
+2025-08-24 16:32:18.168 [main] INFO  com.ibkr.core.IBClient - Attempting to fetch previous day data for 2 stocks via initiateHistoricalDataFetch.
+2025-08-24 16:32:18.174 [main] ERROR com.ibkr.core.IBClient - Cannot fetch historical data. IBClient not connected.
+2025-08-24 16:32:18.176 [main] INFO  com.ibkr.core.IBClient - Historical data fetch initiated and completed. 0 symbols processed.
+2025-08-24 16:32:18.177 [main] WARN  com.ibkr.core.IBClient - Skipping S/R calculation as no historical data was fetched.
+2025-08-24 16:32:42.207 [main] ERROR com.ibkr.core.IBClient - Cannot fetch historical data. IBClient not connected.
+2025-08-24 16:33:11.809 [main] INFO  com.ibkr.core.IBClient - Attempting to fetch previous day data for 2 stocks via initiateHistoricalDataFetch.
+2025-08-24 16:33:11.812 [main] ERROR com.ibkr.core.IBClient - Cannot fetch historical data. IBClient not connected.
+2025-08-24 16:33:11.812 [main] INFO  com.ibkr.core.IBClient - Historical data fetch initiated and completed. 0 symbols processed.
+2025-08-24 16:33:11.813 [main] WARN  com.ibkr.core.IBClient - Skipping S/R calculation as no historical data was fetched.
+2025-08-24 16:34:13.845 [main] INFO  com.ibkr.core.IBClient - Attempting to fetch previous day data for 2 stocks via initiateHistoricalDataFetch.
+2025-08-24 16:34:13.848 [main] INFO  com.ibkr.core.IBClient - Requesting previous day OHLC for 2 symbols.
+2025-08-24 16:34:13.849 [main] DEBUG com.ibkr.core.IBClient - Requesting historical data for GOOG: ReqId=101, Contract=GOOG, EndDT=, Duration=1 D, BarSize=1 day, WhatToShow=TRADES, UseRTH=1, Format=1
+2025-08-24 16:34:13.849 [main] DEBUG com.ibkr.core.IBClient - Requesting historical data for AAPL: ReqId=102, Contract=AAPL, EndDT=, Duration=1 D, BarSize=1 day, WhatToShow=TRADES, UseRTH=1, Format=1
+2025-08-24 16:34:13.850 [main] INFO  com.ibkr.core.IBClient - All historical data requests dispatched. Waiting for responses...
+2025-08-24 16:35:13.850 [main] WARN  com.ibkr.core.IBClient - Timed out waiting for all historical data. Received 0 of 2 responses.
+2025-08-24 16:35:13.853 [main] INFO  com.ibkr.core.IBClient - Historical data fetch initiated and completed. 0 symbols processed.
+2025-08-24 16:35:13.853 [main] WARN  com.ibkr.core.IBClient - Skipping S/R calculation as no historical data was fetched.
+2025-08-24 16:35:51.138 [Thread-1] INFO  com.ibkr.core.IBClient - Attempting to fetch previous day data for 2 stocks via initiateHistoricalDataFetch.
+2025-08-24 16:35:51.141 [Thread-1] INFO  com.ibkr.core.IBClient - Requesting previous day OHLC for 2 symbols.
+2025-08-24 16:35:51.141 [Thread-1] DEBUG com.ibkr.core.IBClient - Requesting historical data for GOOG: ReqId=101, Contract=GOOG, EndDT=, Duration=1 D, BarSize=1 day, WhatToShow=TRADES, UseRTH=1, Format=1
+2025-08-24 16:35:51.142 [Thread-1] DEBUG com.ibkr.core.IBClient - Requesting historical data for AAPL: ReqId=102, Contract=AAPL, EndDT=, Duration=1 D, BarSize=1 day, WhatToShow=TRADES, UseRTH=1, Format=1
+2025-08-24 16:35:51.142 [Thread-1] INFO  com.ibkr.core.IBClient - All historical data requests dispatched. Waiting for responses...
+2025-08-24 16:36:13.361 [Thread-1] INFO  com.ibkr.core.IBClient - Attempting to fetch previous day data for 2 stocks via initiateHistoricalDataFetch.
+2025-08-24 16:36:13.364 [Thread-1] INFO  com.ibkr.core.IBClient - Requesting previous day OHLC for 2 symbols.
+2025-08-24 16:36:13.364 [Thread-1] DEBUG com.ibkr.core.IBClient - Requesting historical data for GOOG: ReqId=101, Contract=GOOG, EndDT=, Duration=1 D, BarSize=1 day, WhatToShow=TRADES, UseRTH=1, Format=1
+2025-08-24 16:36:13.365 [Thread-1] DEBUG com.ibkr.core.IBClient - Requesting historical data for AAPL: ReqId=102, Contract=AAPL, EndDT=, Duration=1 D, BarSize=1 day, WhatToShow=TRADES, UseRTH=1, Format=1
+2025-08-24 16:36:13.365 [Thread-1] INFO  com.ibkr.core.IBClient - All historical data requests dispatched. Waiting for responses...
+2025-08-24 23:35:28.554 [main] INFO  com.ibkr.strategy.orb.OrbStrategy - OrbStrategy initialized. Timeframe: 5 mins, SL ATR %: 0.1, Risk %: 0.01
+2025-08-24 23:36:20.186 [main] INFO  com.ibkr.strategy.orb.OrbStrategy - OrbStrategy initialized. Timeframe: 5 mins, SL ATR %: 0.1, Risk %: 0.01
+2025-08-24 23:36:20.192 [main] WARN  com.ibkr.core.TradingEngine - No symbols found in InstrumentRegistry at startup. Historical volume data will not be pre-loaded.
+2025-08-24 23:36:20.192 [main] INFO  com.ibkr.core.TradingEngine - TradingEngine initialized, including OrbStrategy, IntradayPriceActionAnalyzer, and VolumeSpikeAnalyzer.
+2025-08-24 23:36:20.198 [main] INFO  com.ibkr.core.TradingEngine - Cached PDH for AAPL: 160.0
+2025-08-24 23:36:20.199 [main] INFO  com.ibkr.strategy.orb.OrbStrategy - ORB daily state and buffers reset for symbol: AAPL
+2025-08-24 23:36:20.200 [main] INFO  com.ibkr.core.TradingEngine - ORB Strategy daily state reset and PDH set for symbol: AAPL
+2025-08-24 23:36:20.210 [main] INFO  com.ibkr.core.TradingEngine - Set 14-day avg opening range volume for AAPL: 0.0
+2025-08-24 23:36:20.211 [main] INFO  c.i.a.IntradayPriceActionAnalyzer - Creating new IntradayPriceActionState for symbol: AAPL
+2025-08-24 23:36:20.212 [main] INFO  c.i.a.IntradayPriceActionAnalyzer - Initialized IntradayPriceActionState for AAPL: PDH=160.0, DayOpen=155.0
+2025-08-24 23:36:20.212 [main] INFO  com.ibkr.core.TradingEngine - Daily strategy initialization complete for symbol: AAPL
+2025-08-24 23:38:59.918 [main] INFO  com.ibkr.strategy.orb.OrbStrategy - OrbStrategy initialized. Timeframe: 5 mins, SL ATR %: 0.1, Risk %: 0.01
+2025-08-24 23:38:59.923 [main] WARN  com.ibkr.core.TradingEngine - No symbols found in InstrumentRegistry at startup. Historical volume data will not be pre-loaded.
+2025-08-24 23:38:59.923 [main] INFO  com.ibkr.core.TradingEngine - TradingEngine initialized, including OrbStrategy, IntradayPriceActionAnalyzer, and VolumeSpikeAnalyzer.
+2025-08-24 23:38:59.930 [main] INFO  com.ibkr.core.TradingEngine - Cached PDH for AAPL: 160.0
+2025-08-24 23:38:59.932 [main] INFO  com.ibkr.strategy.orb.OrbStrategy - ORB daily state and buffers reset for symbol: AAPL
+2025-08-24 23:38:59.932 [main] INFO  com.ibkr.core.TradingEngine - ORB Strategy daily state reset and PDH set for symbol: AAPL
+2025-08-24 23:38:59.939 [main] INFO  com.ibkr.core.TradingEngine - Set 14-day avg opening range volume for AAPL: 0.0
+2025-08-24 23:38:59.940 [main] INFO  c.i.a.IntradayPriceActionAnalyzer - Creating new IntradayPriceActionState for symbol: AAPL
+2025-08-24 23:38:59.941 [main] INFO  c.i.a.IntradayPriceActionAnalyzer - Initialized IntradayPriceActionState for AAPL: PDH=160.0, DayOpen=155.0
+2025-08-24 23:38:59.941 [main] INFO  com.ibkr.core.TradingEngine - Daily strategy initialization complete for symbol: AAPL
+2025-08-24 23:38:59.966 [main] INFO  com.ibkr.strategy.orb.OrbStrategy - OrbStrategy initialized. Timeframe: 5 mins, SL ATR %: 0.1, Risk %: 0.01
+2025-08-24 23:38:59.966 [main] WARN  com.ibkr.core.TradingEngine - No symbols found in InstrumentRegistry at startup. Historical volume data will not be pre-loaded.
+2025-08-24 23:38:59.966 [main] INFO  com.ibkr.core.TradingEngine - TradingEngine initialized, including OrbStrategy, IntradayPriceActionAnalyzer, and VolumeSpikeAnalyzer.
+2025-08-24 23:38:59.995 [main] INFO  com.ibkr.core.TradingEngine - TradingEngine services initialized.
+2025-08-24 23:38:59.997 [main] INFO  com.ibkr.core.TradingEngine - Running pre-market screen...
+2025-08-24 23:38:59.998 [main] INFO  com.ibkr.core.TradingEngine - Pre-market screen completed. 0 stocks passed.
+2025-08-24 23:41:58.892 [main] INFO  c.ibkr.service.IbkrMarketDataService - Dispatching generalized historical data request for AAPL: ReqId=101, Duration=1 D, BarSize=1 day
+2025-08-24 23:41:58.899 [main] DEBUG c.ibkr.service.IbkrMarketDataService - Received historical bar for generalized request 101: Date 1672531200, C: 155.0
+2025-08-24 23:41:58.901 [main] INFO  c.ibkr.service.IbkrMarketDataService - HistoricalDataEnd for generalized request 101. Completed future with 1 bars.
+2025-08-24 23:41:59.059 [main] INFO  com.ibkr.strategy.orb.OrbStrategy - OrbStrategy initialized. Timeframe: 5 mins, SL ATR %: 0.1, Risk %: 0.01
+2025-08-24 23:41:59.063 [main] WARN  com.ibkr.core.TradingEngine - No symbols found in InstrumentRegistry at startup. Historical volume data will not be pre-loaded.
+2025-08-24 23:41:59.063 [main] INFO  com.ibkr.core.TradingEngine - TradingEngine initialized, including OrbStrategy, IntradayPriceActionAnalyzer, and VolumeSpikeAnalyzer.
+2025-08-24 23:41:59.067 [main] INFO  com.ibkr.core.TradingEngine - Cached PDH for AAPL: 160.0
+2025-08-24 23:41:59.069 [main] INFO  com.ibkr.strategy.orb.OrbStrategy - ORB daily state and buffers reset for symbol: AAPL
+2025-08-24 23:41:59.070 [main] INFO  com.ibkr.core.TradingEngine - ORB Strategy daily state reset and PDH set for symbol: AAPL
+2025-08-24 23:41:59.082 [main] INFO  com.ibkr.core.TradingEngine - Set 14-day avg opening range volume for AAPL: 0.0
+2025-08-24 23:41:59.084 [main] INFO  c.i.a.IntradayPriceActionAnalyzer - Creating new IntradayPriceActionState for symbol: AAPL
+2025-08-24 23:41:59.085 [main] INFO  c.i.a.IntradayPriceActionAnalyzer - Initialized IntradayPriceActionState for AAPL: PDH=160.0, DayOpen=155.0
+2025-08-24 23:41:59.085 [main] INFO  com.ibkr.core.TradingEngine - Daily strategy initialization complete for symbol: AAPL
+2025-08-24 23:41:59.105 [main] INFO  com.ibkr.strategy.orb.OrbStrategy - OrbStrategy initialized. Timeframe: 5 mins, SL ATR %: 0.1, Risk %: 0.01
+2025-08-24 23:41:59.107 [main] WARN  com.ibkr.core.TradingEngine - No symbols found in InstrumentRegistry at startup. Historical volume data will not be pre-loaded.
+2025-08-24 23:41:59.107 [main] INFO  com.ibkr.core.TradingEngine - TradingEngine initialized, including OrbStrategy, IntradayPriceActionAnalyzer, and VolumeSpikeAnalyzer.
+2025-08-24 23:41:59.137 [main] INFO  com.ibkr.core.TradingEngine - TradingEngine services initialized.
+2025-08-24 23:41:59.140 [main] INFO  com.ibkr.core.TradingEngine - Running pre-market screen...
+2025-08-24 23:41:59.141 [main] INFO  com.ibkr.core.TradingEngine - Pre-market screen completed. 0 stocks passed.

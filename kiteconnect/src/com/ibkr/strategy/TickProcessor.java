@@ -4,7 +4,7 @@ import com.ibkr.AppContext;
 import com.ibkr.analysis.MarketSentimentAnalyzer; // New import
 import com.ibkr.core.TradingEngine;
 import com.ibkr.data.TickAggregator; // New import
-import com.ibkr.IBOrderExecutor;
+import com.ibkr.service.OrderService;
 import com.ibkr.models.OpeningMarketTrend; // New import
 import com.ibkr.models.Order;
 import com.ibkr.models.TradeAction;
@@ -27,15 +27,15 @@ public class TickProcessor {
     private final BreakoutSignalGenerator signalGenerator;
     private final RiskManager riskManager;
     private final TradingEngine tradingEngine;
-    private final IBOrderExecutor orderExecutor;
+    private final OrderService orderService;
     private final AppContext appContext; // Added
 
     public TickProcessor(BreakoutSignalGenerator signalGenerator, RiskManager riskManager,
-                         TradingEngine tradingEngine, IBOrderExecutor orderExecutor, AppContext appContext) { // Added appContext
+                         TradingEngine tradingEngine, OrderService orderService, AppContext appContext) { // Added appContext
         this.signalGenerator = signalGenerator;
         this.riskManager = riskManager;
         this.tradingEngine = tradingEngine;
-        this.orderExecutor = orderExecutor;
+        this.orderService = orderService;
         this.appContext = appContext; // Added
     }
 
@@ -233,14 +233,22 @@ public class TickProcessor {
     }
 
     private void executeTrade(TradingSignal signal) {
-        if (orderExecutor == null) {
-            logger.error("OrderExecutor is null. Cannot execute trade for signal: {}", signal);
+        if (orderService == null) {
+            logger.error("OrderService is null. Cannot execute trade for signal: {}", signal);
             return;
         }
         try {
+            Order order = new Order();
+            order.setSymbol(signal.getSymbol());
+            order.setAction(signal.getAction());
+            order.setQuantity(signal.getQuantity());
+            order.setPrice(signal.getPrice());
+            order.setOrderType(com.ibkr.models.OrderType.MARKET);
+            order.setDarkPoolAllowed(signal.isDarkPoolAllowed());
+
             logger.info("Placing order for signal: Symbol={}, Action={}, Qty={}, Price={}",
                 signal.getSymbol(), signal.getAction(), signal.getQuantity(), signal.getPrice());
-            orderExecutor.placeOrder(signal);
+            orderService.placeOrder(order);
         } catch (Exception e) {
             logger.error("Error executing trade for signal {}: {}", signal, e.getMessage(), e);
         }

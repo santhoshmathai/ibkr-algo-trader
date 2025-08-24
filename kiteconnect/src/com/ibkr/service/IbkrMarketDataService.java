@@ -1,11 +1,10 @@
-package com.ibkr.core;
+package com.ibkr.service;
 
 import com.ib.client.*;
 import com.ib.client.OrderState; // Added for openOrder
 import com.ib.client.Execution;
 import com.ibkr.AppContext; // Added
 import com.ibkr.alert.TradeAlertLogger; // Added Import
-import com.ibkr.IBOrderExecutor;
 import com.ibkr.data.InstrumentRegistry;
 import com.ibkr.data.MarketDataHandler;
 import com.ibkr.models.PreviousDayData; // Added
@@ -27,15 +26,13 @@ import java.util.concurrent.TimeUnit; // Added
 import java.time.LocalDateTime; // Added
 import java.time.format.DateTimeFormatter; // Added
 
-public class IBClient implements EWrapper {
-    private static final Logger logger = LoggerFactory.getLogger(IBClient.class);
-    private IBConnectionManager connectionManager;
+public class IbkrMarketDataService implements EWrapper, MarketDataService {
+    private static final Logger logger = LoggerFactory.getLogger(IbkrMarketDataService.class);
     private final InstrumentRegistry instrumentRegistry;
     private final TickAggregator tickAggregator;
-    private final TickProcessor tickProcessor;
-    private final IBOrderExecutor orderExecutor;
-    private final EReaderSignal readerSignal = new EJavaSignal();
-    private final EClientSocket clientSocket = new EClientSocket(this, readerSignal);
+    private TickProcessor tickProcessor;
+    private final EReaderSignal readerSignal;
+    private final EClientSocket clientSocket;
     private final ExecutorService executor;
     private MarketDataHandler marketDataHandler;
     private final AppContext appContext; // Added
@@ -51,21 +48,66 @@ public class IBClient implements EWrapper {
     private final Map<Integer, List<com.zerodhatech.models.HistoricalData>> historicalDataBuffer = new ConcurrentHashMap<>();
 
 
-    public IBClient(AppContext appContext, InstrumentRegistry instrumentRegistry, TickAggregator tickAggregator,
-                    TickProcessor tickProcessor, IBOrderExecutor orderExecutor,
+    public IbkrMarketDataService(AppContext appContext, InstrumentRegistry instrumentRegistry, TickAggregator tickAggregator,
+                    TickProcessor tickProcessor,
                     MarketDataHandler marketDataHandler) {
+        this(appContext, instrumentRegistry, tickAggregator, tickProcessor, marketDataHandler, new EJavaSignal());
+    }
+
+    public IbkrMarketDataService(AppContext appContext, InstrumentRegistry instrumentRegistry, TickAggregator tickAggregator,
+                    TickProcessor tickProcessor,
+                    MarketDataHandler marketDataHandler, EReaderSignal signal) {
         this.appContext = appContext; // Added
         this.instrumentRegistry = instrumentRegistry;
         this.tickAggregator = tickAggregator;
         this.tickProcessor = tickProcessor;
-        this.orderExecutor = orderExecutor;
         this.marketDataHandler = marketDataHandler;
         this.executor = Executors.newSingleThreadExecutor();
+        this.readerSignal = signal;
+        this.clientSocket = new EClientSocket(this, readerSignal);
     }
 
-    public void setConnectionManager(IBConnectionManager connectionManager) {
-        this.connectionManager = connectionManager;
+    @Override
+    public CompletableFuture<List<com.zerodhatech.models.HistoricalData>> getDailyHistoricalData(String symbol, int days) {
+        return null;
     }
+
+    @Override
+    public CompletableFuture<Map<String, Long>> getOpeningRangeVolumeHistory(String symbol, int days, int timeframeMinutes, String time) {
+        return null;
+    }
+
+    @Override
+    public CompletableFuture<Double> getAverageDailyVolume(String symbol) {
+        return null;
+    }
+
+    @Override
+    public void connect(String host, int port, int clientId) {
+        if (!clientSocket.isConnected()) {
+            logger.info("Connecting to {}:{} with clientId: {}", host, port, clientId);
+            clientSocket.eConnect(host, port, clientId);
+            if (clientSocket.isConnected()) {
+                 logger.info("Successfully connected (according to isConnected()). Awaiting connectAck.");
+            } else {
+                 logger.warn("Connection attempt made, but isConnected() is false. Check TWS logs and ensure EWrapper.connectAck is received.");
+            }
+        } else {
+            logger.info("Already connected or connection attempt in progress.");
+        }
+    }
+
+    @Override
+    public void disconnect() {
+        if (clientSocket.isConnected()) {
+            logger.info("Disconnecting...");
+            clientSocket.eDisconnect();
+            logger.info("Disconnected.");
+        } else {
+            logger.info("Already disconnected.");
+        }
+    }
+
 
     public EClientSocket getClientSocket() { // Added getter
         return this.clientSocket;
@@ -75,37 +117,8 @@ public class IBClient implements EWrapper {
         return this.readerSignal;
     }
 
-    public void connect(String host, int port, int clientId) {
-        if (this.connectionManager == null) {
-            logger.error("IBConnectionManager is not set. Cannot connect.");
-            return;
-        }
-        // Assuming IBConnectionManager's connect method uses the EClientSocket it holds.
-        this.connectionManager.connect(host, port, clientId);
-    }
-
-    public void subscribeToSymbol(String symbol, String exchange) {
-        Contract contract = createStockContract(symbol, exchange);
-        int tickerId = instrumentRegistry.registerInstrument(contract);
-
-        // Use the internal clientSocket directly
-        this.clientSocket.reqMarketDataType(1); // Live data
-        logger.info("Requesting MktData for {}({})", symbol, tickerId);
-        this.clientSocket.reqMktData(tickerId, contract, "", false, false, null);
-        logger.info("Requesting TickByTick AllLast for {}({})", symbol, tickerId);
-        this.clientSocket.reqTickByTickData(tickerId, contract, "AllLast", 0, false);
-        logger.info("Requesting TickByTick BidAsk for {}({})", symbol, tickerId);
-        this.clientSocket.reqTickByTickData(tickerId, contract, "BidAsk", 0, false);
-
-        // Request 5-second real-time bars
-        logger.info("Requesting 5-second RealTimeBars for {}({})", symbol, tickerId);
-        this.clientSocket.reqRealTimeBars(tickerId, contract, 5, "TRADES", true, new ArrayList<TagValue>());
-
-        // Request Market Depth
-        int numRows = 20; // Number of depth lines
-        boolean isSmartDepth = true; // For consolidated depth
-        logger.info("Requesting Market Depth for {}({}), NumRows: {}, IsSmart: {}", symbol, tickerId, numRows, isSmartDepth);
-        this.clientSocket.reqMktDepth(tickerId, contract, numRows, isSmartDepth, new ArrayList<TagValue>());
+    public void setTickProcessor(TickProcessor tickProcessor) {
+        this.tickProcessor = tickProcessor;
     }
 
     private Contract createStockContract(String symbol, String exchange) {
@@ -258,33 +271,17 @@ public class IBClient implements EWrapper {
     public void orderStatus(int orderId, String status, double filled, double remaining, double avgFillPrice, int permId, int parentId, double lastFillPrice, int clientId, String whyHeld, double mktCapPrice) {
         logger.info("OrderStatus - OrderId: {}, Status: {}, Filled: {}, Remaining: {}, AvgFillPrice: {}, PermId: {}, ParentId: {}, LastFillPrice: {}, ClientId: {}, WhyHeld: {}, MktCapPrice: {}",
                 orderId, status, filled, remaining, avgFillPrice, permId, parentId, lastFillPrice, clientId, whyHeld, mktCapPrice);
-        if (orderExecutor != null) {
-            // Pass relevant fields to IBOrderExecutor
-            orderExecutor.updateOrderStatus(orderId, status, filled, remaining, avgFillPrice, lastFillPrice);
-        } else {
-            logger.warn("orderExecutor is null. Cannot update order status for OrderId: {}", orderId);
-        }
     }
 
     @Override
     public void openOrder(int orderId, Contract contract, com.ib.client.Order ibOrder, com.ib.client.OrderState orderState) {
         logger.info("OpenOrder - OrderId: {}, Symbol: {}, Action: {}, Type: {}, Status: {}, LmtPrice: {}, AuxPrice: {}",
                 orderId, contract.symbol(), ibOrder.action(), ibOrder.orderType(), orderState.getStatus(), ibOrder.lmtPrice(), ibOrder.auxPrice());
-        if (orderExecutor != null) {
-            orderExecutor.handleOpenOrder(orderId, contract, ibOrder, orderState);
-        } else {
-            logger.warn("orderExecutor is null. Cannot handle open order for OrderId: {}", orderId);
-        }
     }
 
     @Override
     public void openOrderEnd() {
         logger.info("OpenOrderEnd received.");
-        if (orderExecutor != null) {
-            orderExecutor.handleOpenOrderEnd();
-        } else {
-            logger.warn("orderExecutor is null. Cannot handle openOrderEnd.");
-        }
     }
 
     @Override
@@ -310,9 +307,6 @@ public class IBClient implements EWrapper {
     @Override
     public void nextValidId(int orderId) {
         // Delegate to IBOrderExecutor
-        if (orderExecutor != null) {
-            orderExecutor.setNextValidOrderId(orderId);
-        }
     }
 
     @Override
@@ -334,11 +328,6 @@ public class IBClient implements EWrapper {
     public void execDetails(int reqId, Contract contract, Execution execution) {
         logger.info("ExecDetails - ReqId: {}, OrderId: {}, Symbol: {}, Side: {}, Shares: {}, Price: {}, Time: {}, ExecId: {}",
                 reqId, execution.orderId(), contract.symbol(), execution.side(), execution.shares(), execution.price(), execution.time(), execution.execId());
-        if (orderExecutor != null) {
-            orderExecutor.handleExecutionDetails(reqId, contract, execution);
-        } else {
-            logger.warn("orderExecutor is null. Cannot handle execution details for ReqId: {}", reqId);
-        }
 
         // Log the trade execution to TradeAlerts.txt
         TradeAlertLogger.logTradeExecution(execution, contract);
@@ -347,11 +336,6 @@ public class IBClient implements EWrapper {
     @Override
     public void execDetailsEnd(int reqId) {
         logger.info("ExecDetailsEnd received for ReqId: {}", reqId);
-        if (orderExecutor != null) {
-            orderExecutor.handleExecutionDetailsEnd(reqId);
-        } else {
-            logger.warn("orderExecutor is null. Cannot handle execDetailsEnd for ReqId: {}", reqId);
-        }
     }
 
     @Override

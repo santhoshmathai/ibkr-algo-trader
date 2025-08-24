@@ -4,8 +4,9 @@ import com.ibkr.IBOrderExecutor;
 import com.ibkr.analysis.MarketSentimentAnalyzer;
 import com.ibkr.analysis.SectorStrengthAnalyzer;
 import com.ibkr.analysis.VolumeSpikeAnalyzer;
-import com.ibkr.data.HistoricalDataService;
 import com.ibkr.data.HistoricalVolumeService;
+import com.ibkr.service.MarketDataService;
+import com.ibkr.service.OrderService;
 import com.ibkr.indicators.*;
 import com.ibkr.models.PortfolioManager;
 import com.ibkr.safeguards.*;
@@ -16,7 +17,6 @@ import com.ibkr.strategy.orb.OrbStrategy; // +OrbStrategy
 import com.ibkr.strategy.common.OrbStrategyParameters; // +OrbStrategy
 import com.ibkr.strategy.common.VolumeSpikeStrategyParameters;
 import com.ibkr.AppContext; // +OrbStrategy
-import com.ibkr.IBKRApiService;
 import com.ibkr.analysis.IntradayPriceActionAnalyzer; // +PriceAction
 import com.ibkr.screener.StockScreener;
 import com.ibkr.models.PriceActionSignal; // +PriceAction
@@ -60,10 +60,10 @@ public class TradingEngine {
     private final IntradayPriceActionAnalyzer intradayPriceActionAnalyzer; // +PriceAction
     private final HistoricalVolumeService historicalVolumeService;
     private final VolumeSpikeAnalyzer volumeSpikeAnalyzer;
-    private final IBOrderExecutor ibOrderExecutor;
+    private final OrderService orderService;
     private StockScreener stockScreener;
     private final PortfolioManager portfolioManager;
-    private HistoricalDataService historicalDataService;
+    private MarketDataService marketDataService;
 
 
     // Data structures for ORB Strategy support
@@ -86,9 +86,10 @@ public class TradingEngine {
     private final Map<String, PreviousDayData> dailyPdhCache = new ConcurrentHashMap<>(); // +OrbStrategy
 
 
-    public TradingEngine(AppContext appContext, IBOrderExecutor ibOrderExecutor, PortfolioManager portfolioManager, SectorStrengthAnalyzer sectorStrengthAnalyzer) {
+    public TradingEngine(AppContext appContext, OrderService orderService, MarketDataService marketDataService, PortfolioManager portfolioManager, SectorStrengthAnalyzer sectorStrengthAnalyzer) {
         this.appContext = appContext;
-        this.ibOrderExecutor = ibOrderExecutor;
+        this.orderService = orderService;
+        this.marketDataService = marketDataService;
         this.portfolioManager = portfolioManager;
         this.instrumentRegistry = appContext.getInstrumentRegistry();
         this.tickAggregator = appContext.getTickAggregator();
@@ -108,9 +109,7 @@ public class TradingEngine {
         this.intradayPriceActionAnalyzer = new IntradayPriceActionAnalyzer(this.appContext); // +PriceAction
 
         // Initialize Volume Spike Analysis components
-        IBKRApiService ibkrApiService = new IBKRApiService();
-        ibkrApiService.connect("127.0.0.1", 7497, 0); // Make sure the port is correct
-        this.historicalVolumeService = new HistoricalVolumeService(ibkrApiService);
+        this.historicalVolumeService = new HistoricalVolumeService(marketDataService);
         this.volumeSpikeAnalyzer = new VolumeSpikeAnalyzer(this.historicalVolumeService);
 
         // Load historical volume data at startup
@@ -124,8 +123,8 @@ public class TradingEngine {
         logger.info("TradingEngine initialized, including OrbStrategy, IntradayPriceActionAnalyzer, and VolumeSpikeAnalyzer.");
     }
 
-    public void initializeServices(HistoricalDataService historicalDataService, StockScreener stockScreener) {
-        this.historicalDataService = historicalDataService;
+    public void initializeServices(MarketDataService marketDataService, StockScreener stockScreener) {
+        this.marketDataService = marketDataService;
         this.stockScreener = stockScreener;
         logger.info("TradingEngine services initialized.");
     }
@@ -165,7 +164,7 @@ public class TradingEngine {
             logger.info("ORB Strategy daily state reset and PDH set for symbol: {}", symbol);
 
             // Fetch historical data for relative volume calculation
-            historicalDataService.getOpeningRangeVolumeHistory(symbol, 14, orbStrategyParameters.getOrbTimeframeMinutes(), "09:30:00")
+            marketDataService.getOpeningRangeVolumeHistory(symbol, 14, orbStrategyParameters.getOrbTimeframeMinutes(), "09:30:00")
                     .thenAccept(history -> {
                         double avgVolume = history.values().stream().mapToLong(l -> l).average().orElse(0.0);
                         orbStrategy.getState(symbol).avgOpeningRangeVolume14day = avgVolume;
@@ -605,7 +604,14 @@ public class TradingEngine {
 
                         TradingSignal signal = orbStrategy.generateTradingSignal(result.symbol);
                         if (signal != null) {
-                            ibOrderExecutor.placeOrder(signal);
+                            com.ibkr.models.Order order = new com.ibkr.models.Order();
+                            order.setSymbol(signal.getSymbol());
+                            order.setAction(signal.getAction());
+                            order.setQuantity(signal.getQuantity());
+                            order.setPrice(signal.getPrice());
+                            order.setOrderType(signal.getOrderType());
+                            order.setDarkPoolAllowed(signal.isDarkPoolAllowed());
+                            orderService.placeOrder(order);
                         }
                     }
                 })
@@ -623,13 +629,12 @@ public class TradingEngine {
             }
 
             TradeAction action = position.getQuantity() > 0 ? TradeAction.SELL : TradeAction.BUY;
-            TradingSignal signal = new TradingSignal.Builder()
-                    .symbol(position.getSymbol())
-                    .action(action)
-                    .quantity(Math.abs(position.getQuantity()))
-                    .orderType(com.ibkr.models.OrderType.MARKET)
-                    .build();
-            ibOrderExecutor.placeOrder(signal);
+            com.ibkr.models.Order order = new com.ibkr.models.Order();
+            order.setSymbol(position.getSymbol());
+            order.setAction(action);
+            order.setQuantity(Math.abs(position.getQuantity()));
+            order.setOrderType(com.ibkr.models.OrderType.MARKET);
+            orderService.placeOrder(order);
             logger.info("Placed closing order for symbol: {}", position.getSymbol());
         }
     }

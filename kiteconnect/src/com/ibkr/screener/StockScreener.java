@@ -1,6 +1,6 @@
 package com.ibkr.screener;
 
-import com.ibkr.data.HistoricalDataService;
+import com.ibkr.service.MarketDataService;
 import com.ibkr.utils.TradingCalculations;
 import com.zerodhatech.models.HistoricalData;
 import org.slf4j.Logger;
@@ -22,7 +22,7 @@ public class StockScreener {
 
     private static final Logger logger = LoggerFactory.getLogger(StockScreener.class);
 
-    private final HistoricalDataService historicalDataService;
+    private final MarketDataService marketDataService;
     private final int requiredBars = 15; // e.g., 14 for ATR + 1 previous close
 
     // Screening criteria
@@ -33,8 +33,8 @@ public class StockScreener {
     private static final int TOP_N_STOCKS = 20;
 
 
-    public StockScreener(HistoricalDataService historicalDataService) {
-        this.historicalDataService = historicalDataService;
+    public StockScreener(MarketDataService marketDataService) {
+        this.marketDataService = marketDataService;
     }
 
     /**
@@ -85,7 +85,7 @@ public class StockScreener {
     }
 
     private CompletableFuture<ScreeningResult> processSymbolForPreMarketScreen(String symbol) {
-        return historicalDataService.getDailyHistoricalData(symbol, requiredBars)
+        return marketDataService.getDailyHistoricalData(symbol, requiredBars)
                 .thenApply(bars -> {
                     if (bars == null || bars.size() < requiredBars) {
                         logger.warn("Insufficient daily data for {}. Needed {}, got {}. Skipping.", symbol, requiredBars, bars == null ? 0 : bars.size());
@@ -148,7 +148,7 @@ public class StockScreener {
         }
 
         // TODO: Get market open time from config
-        return historicalDataService.getOpeningRangeVolumeHistory(result.symbol, 14, 5, "09:30:00")
+        return marketDataService.getOpeningRangeVolumeHistory(result.symbol, 14, 5, "09:30:00")
                 .thenApply(history -> {
                     if (history == null || history.isEmpty()) {
                         logger.warn("No historical opening range volume for {}. Cannot calculate RV.", result.symbol);
