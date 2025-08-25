@@ -4,6 +4,7 @@ import com.ibkr.IBOrderExecutor;
 import com.ibkr.analysis.MarketSentimentAnalyzer;
 import com.ibkr.analysis.SectorStrengthAnalyzer;
 import com.ibkr.analysis.VolumeSpikeAnalyzer;
+import com.ibkr.data.HistoricalDataService;
 import com.ibkr.data.HistoricalVolumeService;
 import com.ibkr.service.MarketDataService;
 import com.ibkr.service.OrderService;
@@ -108,8 +109,9 @@ public class TradingEngine {
         // Initialize Intraday Price Action Analyzer
         this.intradayPriceActionAnalyzer = new IntradayPriceActionAnalyzer(this.appContext); // +PriceAction
 
-        // Initialize Volume Spike Analysis components
-        this.historicalVolumeService = new HistoricalVolumeService(marketDataService);
+        // Initialize Data Services
+        HistoricalDataService historicalDataService = new HistoricalDataService(marketDataService, this.instrumentRegistry, appContext.getMeterRegistry());
+        this.historicalVolumeService = new HistoricalVolumeService(historicalDataService);
         this.volumeSpikeAnalyzer = new VolumeSpikeAnalyzer(this.historicalVolumeService);
 
         // Load historical volume data at startup using the defined list of stocks from AppContext

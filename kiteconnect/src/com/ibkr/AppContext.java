@@ -226,6 +226,7 @@ public class AppContext {
     public PortfolioManager getPortfolioManager() { return portfolioManager; }
     public Map<String, List<String>> getSectorToStocks() { return sectorToStocks; }
     public Map<String, String> getSymbolToSector() { return symbolToSector; }
+    public MeterRegistry getMeterRegistry() { return meterRegistry; }
 
     // --- Other methods ---
     public int getNextRequestId() { return nextRequestId.getAndIncrement(); }
