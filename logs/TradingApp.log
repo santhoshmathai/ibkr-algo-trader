@@ -170,3 +170,191 @@
 2025-08-25 13:54:03.722 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for GOOG: 15 days
 2025-08-25 13:54:03.722 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for GOOG: Not connected.
 2025-08-25 13:54:03.723 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for GOOG: Not connected to TWS.
+2025-08-25 23:44:09.896 [main] INFO  com.ibkr.IBAppMain - Application starting...
+2025-08-25 23:44:09.941 [main] INFO  com.ibkr.data.MarketDataHandler - Data directory already exists: /app/market_data
+2025-08-25 23:44:09.945 [main] INFO  c.i.a.SupportResistanceAnalyzer - SupportResistanceAnalyzer initialized.
+2025-08-25 23:44:09.952 [main] INFO  c.i.analysis.MarketSentimentAnalyzer - MarketSentimentAnalyzer initialized. Symbols: 25, Observation: 15 mins, Market Open: 09:30, Observation End: 09:45, Analysis Window End: 10:00
+2025-08-25 23:44:09.955 [main] INFO  c.i.analysis.SectorStrengthAnalyzer - SectorStrengthAnalyzer initialized with 11 sectors and 34 symbol mappings.
+2025-08-25 23:44:09.967 [main] INFO  com.ibkr.strategy.orb.OrbStrategy - OrbStrategy initialized. Timeframe: 5 mins, SL ATR %: 0.1, Risk %: 0.01
+2025-08-25 23:44:09.992 [main] INFO  com.ibkr.core.TradingEngine - Registering contracts for 25 symbols before data loading.
+2025-08-25 23:44:09.993 [main] INFO  com.ibkr.core.TradingEngine - Pre-loading historical daily volume data for 25 symbols.
+2025-08-25 23:44:09.993 [main] INFO  c.ibkr.data.HistoricalVolumeService - Starting historical daily volume calculation for 25 symbols.
+2025-08-25 23:44:10.000 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for GOOGL: 15 days
+2025-08-25 23:44:10.000 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for GOOGL: Not connected.
+2025-08-25 23:44:10.005 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for GOOGL: Not connected to TWS.
+2025-08-25 23:44:10.006 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for AAPL: 15 days
+2025-08-25 23:44:10.006 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for AAPL: Not connected.
+2025-08-25 23:44:10.006 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for AAPL: Not connected to TWS.
+2025-08-25 23:44:10.007 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for CVX: 15 days
+2025-08-25 23:44:10.007 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for CVX: Not connected.
+2025-08-25 23:44:10.007 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for CVX: Not connected to TWS.
+2025-08-25 23:44:10.007 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for JPM: 15 days
+2025-08-25 23:44:10.007 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for JPM: Not connected.
+2025-08-25 23:44:10.007 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for JPM: Not connected to TWS.
+2025-08-25 23:44:10.007 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for JNJ: 15 days
+2025-08-25 23:44:10.007 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for JNJ: Not connected.
+2025-08-25 23:44:10.007 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for JNJ: Not connected to TWS.
+2025-08-25 23:44:10.008 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for UNH: 15 days
+2025-08-25 23:44:10.008 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for UNH: Not connected.
+2025-08-25 23:44:10.008 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for UNH: Not connected to TWS.
+2025-08-25 23:44:10.008 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for PFE: 15 days
+2025-08-25 23:44:10.008 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for PFE: Not connected.
+2025-08-25 23:44:10.008 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for PFE: Not connected to TWS.
+2025-08-25 23:44:10.009 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for MSFT: 15 days
+2025-08-25 23:44:10.009 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for MSFT: Not connected.
+2025-08-25 23:44:10.009 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for MSFT: Not connected to TWS.
+2025-08-25 23:44:10.009 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for COST: 15 days
+2025-08-25 23:44:10.009 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for COST: Not connected.
+2025-08-25 23:44:10.009 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for COST: Not connected to TWS.
+2025-08-25 23:44:10.009 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for TSLA: 15 days
+2025-08-25 23:44:10.009 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for TSLA: Not connected.
+2025-08-25 23:44:10.009 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for TSLA: Not connected to TWS.
+2025-08-25 23:44:10.010 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for MA: 15 days
+2025-08-25 23:44:10.010 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for MA: Not connected.
+2025-08-25 23:44:10.010 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for MA: Not connected to TWS.
+2025-08-25 23:44:10.010 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for V: 15 days
+2025-08-25 23:44:10.010 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for V: Not connected.
+2025-08-25 23:44:10.010 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for V: Not connected to TWS.
+2025-08-25 23:44:10.010 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for PYPL: 15 days
+2025-08-25 23:44:10.010 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for PYPL: Not connected.
+2025-08-25 23:44:10.010 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for PYPL: Not connected to TWS.
+2025-08-25 23:44:10.011 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for NFLX: 15 days
+2025-08-25 23:44:10.011 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for NFLX: Not connected.
+2025-08-25 23:44:10.011 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for NFLX: Not connected to TWS.
+2025-08-25 23:44:10.011 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for NVDA: 15 days
+2025-08-25 23:44:10.011 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for NVDA: Not connected.
+2025-08-25 23:44:10.011 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for NVDA: Not connected to TWS.
+2025-08-25 23:44:10.011 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for BAC: 15 days
+2025-08-25 23:44:10.011 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for BAC: Not connected.
+2025-08-25 23:44:10.011 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for BAC: Not connected to TWS.
+2025-08-25 23:44:10.011 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for DIS: 15 days
+2025-08-25 23:44:10.011 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for DIS: Not connected.
+2025-08-25 23:44:10.012 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for DIS: Not connected to TWS.
+2025-08-25 23:44:10.012 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for MCD: 15 days
+2025-08-25 23:44:10.012 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for MCD: Not connected.
+2025-08-25 23:44:10.012 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for MCD: Not connected to TWS.
+2025-08-25 23:44:10.012 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for PG: 15 days
+2025-08-25 23:44:10.012 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for PG: Not connected.
+2025-08-25 23:44:10.012 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for PG: Not connected to TWS.
+2025-08-25 23:44:10.013 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for XOM: 15 days
+2025-08-25 23:44:10.013 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for XOM: Not connected.
+2025-08-25 23:44:10.013 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for XOM: Not connected to TWS.
+2025-08-25 23:44:10.013 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for ADBE: 15 days
+2025-08-25 23:44:10.013 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for ADBE: Not connected.
+2025-08-25 23:44:10.013 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for ADBE: Not connected to TWS.
+2025-08-25 23:44:10.013 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for PEP: 15 days
+2025-08-25 23:44:10.013 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for PEP: Not connected.
+2025-08-25 23:44:10.013 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for PEP: Not connected to TWS.
+2025-08-25 23:44:10.013 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for HD: 15 days
+2025-08-25 23:44:10.013 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for HD: Not connected.
+2025-08-25 23:44:10.014 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for HD: Not connected to TWS.
+2025-08-25 23:44:10.014 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for AMZN: 15 days
+2025-08-25 23:44:10.014 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for AMZN: Not connected.
+2025-08-25 23:44:10.014 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for AMZN: Not connected to TWS.
+2025-08-25 23:44:10.014 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for CRM: 15 days
+2025-08-25 23:44:10.014 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for CRM: Not connected.
+2025-08-25 23:44:10.014 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for CRM: Not connected to TWS.
+2025-08-25 23:45:09.377 [main] INFO  com.ibkr.IBAppMain - Application starting...
+2025-08-25 23:45:09.416 [main] INFO  com.ibkr.data.MarketDataHandler - Data directory already exists: /app/market_data
+2025-08-25 23:45:09.419 [main] INFO  c.i.a.SupportResistanceAnalyzer - SupportResistanceAnalyzer initialized.
+2025-08-25 23:45:09.425 [main] INFO  c.i.analysis.MarketSentimentAnalyzer - MarketSentimentAnalyzer initialized. Symbols: 25, Observation: 15 mins, Market Open: 09:30, Observation End: 09:45, Analysis Window End: 10:00
+2025-08-25 23:45:09.428 [main] INFO  c.i.analysis.SectorStrengthAnalyzer - SectorStrengthAnalyzer initialized with 11 sectors and 34 symbol mappings.
+2025-08-25 23:45:09.466 [main] INFO  com.ibkr.strategy.orb.OrbStrategy - OrbStrategy initialized. Timeframe: 5 mins, SL ATR %: 0.1, Risk %: 0.01
+2025-08-25 23:45:09.488 [main] INFO  com.ibkr.core.TradingEngine - Registering contracts for 25 symbols before data loading.
+2025-08-25 23:45:09.489 [main] INFO  com.ibkr.core.TradingEngine - Pre-loading historical daily volume data for 25 symbols.
+2025-08-25 23:45:09.490 [main] INFO  c.ibkr.data.HistoricalVolumeService - Starting historical daily volume calculation for 25 symbols.
+2025-08-25 23:45:09.495 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for GOOGL: 15 days
+2025-08-25 23:45:09.500 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for GOOGL
+2025-08-25 23:45:09.501 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for GOOGL. Cannot calculate average volume.
+2025-08-25 23:45:09.501 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for AAPL: 15 days
+2025-08-25 23:45:09.502 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for AAPL
+2025-08-25 23:45:09.502 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for AAPL. Cannot calculate average volume.
+2025-08-25 23:45:09.502 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for CVX: 15 days
+2025-08-25 23:45:09.502 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for CVX
+2025-08-25 23:45:09.503 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for CVX. Cannot calculate average volume.
+2025-08-25 23:45:09.503 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for JPM: 15 days
+2025-08-25 23:45:09.503 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for JPM
+2025-08-25 23:45:09.503 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for JPM. Cannot calculate average volume.
+2025-08-25 23:45:09.503 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for JNJ: 15 days
+2025-08-25 23:45:09.503 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for JNJ
+2025-08-25 23:45:09.504 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for JNJ. Cannot calculate average volume.
+2025-08-25 23:45:09.504 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for UNH: 15 days
+2025-08-25 23:45:09.504 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for UNH
+2025-08-25 23:45:09.504 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for UNH. Cannot calculate average volume.
+2025-08-25 23:45:09.504 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for PFE: 15 days
+2025-08-25 23:45:09.504 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for PFE
+2025-08-25 23:45:09.505 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for PFE. Cannot calculate average volume.
+2025-08-25 23:45:09.505 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for MSFT: 15 days
+2025-08-25 23:45:09.505 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for MSFT
+2025-08-25 23:45:09.505 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for MSFT. Cannot calculate average volume.
+2025-08-25 23:45:09.505 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for COST: 15 days
+2025-08-25 23:45:09.506 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for COST
+2025-08-25 23:45:09.506 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for COST. Cannot calculate average volume.
+2025-08-25 23:45:09.506 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for TSLA: 15 days
+2025-08-25 23:45:09.506 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for TSLA
+2025-08-25 23:45:09.506 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for TSLA. Cannot calculate average volume.
+2025-08-25 23:45:09.506 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for MA: 15 days
+2025-08-25 23:45:09.507 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for MA
+2025-08-25 23:45:09.507 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for MA. Cannot calculate average volume.
+2025-08-25 23:45:09.507 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for V: 15 days
+2025-08-25 23:45:09.507 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for V
+2025-08-25 23:45:09.507 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for V. Cannot calculate average volume.
+2025-08-25 23:45:09.508 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for PYPL: 15 days
+2025-08-25 23:45:09.508 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for PYPL
+2025-08-25 23:45:09.508 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for PYPL. Cannot calculate average volume.
+2025-08-25 23:45:09.508 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for NFLX: 15 days
+2025-08-25 23:45:09.508 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for NFLX
+2025-08-25 23:45:09.508 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for NFLX. Cannot calculate average volume.
+2025-08-25 23:45:09.508 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for NVDA: 15 days
+2025-08-25 23:45:09.509 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for NVDA
+2025-08-25 23:45:09.509 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for NVDA. Cannot calculate average volume.
+2025-08-25 23:45:09.509 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for BAC: 15 days
+2025-08-25 23:45:09.509 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for BAC
+2025-08-25 23:45:09.509 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for BAC. Cannot calculate average volume.
+2025-08-25 23:45:09.509 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for DIS: 15 days
+2025-08-25 23:45:09.510 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for DIS
+2025-08-25 23:45:09.510 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for DIS. Cannot calculate average volume.
+2025-08-25 23:45:09.510 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for MCD: 15 days
+2025-08-25 23:45:09.510 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for MCD
+2025-08-25 23:45:09.510 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for MCD. Cannot calculate average volume.
+2025-08-25 23:45:09.510 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for PG: 15 days
+2025-08-25 23:45:09.510 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for PG
+2025-08-25 23:45:09.511 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for PG. Cannot calculate average volume.
+2025-08-25 23:45:09.511 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for XOM: 15 days
+2025-08-25 23:45:09.511 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for XOM
+2025-08-25 23:45:09.511 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for XOM. Cannot calculate average volume.
+2025-08-25 23:45:09.511 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for ADBE: 15 days
+2025-08-25 23:45:09.511 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for ADBE
+2025-08-25 23:45:09.512 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for ADBE. Cannot calculate average volume.
+2025-08-25 23:45:09.512 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for PEP: 15 days
+2025-08-25 23:45:09.512 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for PEP
+2025-08-25 23:45:09.512 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for PEP. Cannot calculate average volume.
+2025-08-25 23:45:09.512 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for HD: 15 days
+2025-08-25 23:45:09.512 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for HD
+2025-08-25 23:45:09.512 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for HD. Cannot calculate average volume.
+2025-08-25 23:45:09.513 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for AMZN: 15 days
+2025-08-25 23:45:09.513 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for AMZN
+2025-08-25 23:45:09.513 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for AMZN. Cannot calculate average volume.
+2025-08-25 23:45:09.513 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for CRM: 15 days
+2025-08-25 23:45:09.513 [main] INFO  com.ibkr.data.HistoricalDataService - Successfully fetched 0 daily bars for CRM
+2025-08-25 23:45:09.513 [main] WARN  c.ibkr.data.HistoricalVolumeService - Received empty or null historical data for CRM. Cannot calculate average volume.
+2025-08-25 23:45:09.514 [main] INFO  c.ibkr.data.HistoricalVolumeService - Historical daily volume calculation complete.
+2025-08-25 23:45:09.514 [main] INFO  com.ibkr.core.TradingEngine - TradingEngine initialized, including OrbStrategy, IntradayPriceActionAnalyzer, and VolumeSpikeAnalyzer.
+2025-08-25 23:45:09.516 [main] INFO  com.ibkr.core.TradingEngine - TradingEngine services initialized.
+2025-08-25 23:45:09.519 [main] INFO  com.ibkr.AppContext - AppContext initialized successfully.
+2025-08-25 23:45:09.519 [main] INFO  com.ibkr.IBAppMain - AppContext initialized.
+2025-08-25 23:45:09.519 [main] INFO  com.ibkr.IBAppMain - Attempting to connect MarketDataService...
+2025-08-25 23:45:09.520 [main] INFO  com.ibkr.IBAppMain - Connecting to TWS on 127.0.0.1:7497 with clientId 0
+2025-08-25 23:45:09.520 [main] INFO  com.ibkr.IBAppMain - MarketDataService connect method called. Waiting for connection acknowledgment...
+2025-08-25 23:45:09.520 [main] INFO  com.ibkr.IBAppMain - MarketDataService connected successfully.
+2025-08-25 23:45:09.520 [main] INFO  com.ibkr.IBAppMain - IBAppMain setup complete. Application is running.
+2025-08-25 23:50:09.519 [pool-1-thread-1] INFO  com.ibkr.core.TradingEngine - Opening range end triggered. Running opening range screen...
+2025-08-25 23:50:09.520 [pool-1-thread-1] WARN  com.ibkr.core.TradingEngine - No pre-screened stocks to run opening range screen on.
+2025-08-25 23:51:48.976 [IBAppShutdownHook] INFO  com.ibkr.IBAppMain - Shutdown hook initiated by JVM...
+2025-08-25 23:51:48.977 [IBAppShutdownHook] INFO  com.ibkr.IBAppMain - Calling AppContext shutdown...
+2025-08-25 23:51:48.977 [IBAppShutdownHook] INFO  com.ibkr.AppContext - Shutting down AppContext...
+2025-08-25 23:51:48.979 [IBAppShutdownHook] INFO  com.ibkr.data.MarketDataHandler - Shutting down MarketDataHandler persistence executor...
+2025-08-25 23:51:48.980 [IBAppShutdownHook] INFO  com.ibkr.data.MarketDataHandler - Closing 0 symbol writers.
+2025-08-25 23:51:48.980 [IBAppShutdownHook] INFO  com.ibkr.data.MarketDataHandler - MarketDataHandler shutdown complete.
+2025-08-25 23:51:48.980 [IBAppShutdownHook] INFO  com.ibkr.AppContext - AppContext shutdown process completed.
+2025-08-25 23:51:48.980 [IBAppShutdownHook] INFO  com.ibkr.IBAppMain - Shutdown hook processing completed.

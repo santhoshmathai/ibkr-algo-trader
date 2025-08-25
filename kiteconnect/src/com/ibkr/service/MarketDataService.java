@@ -21,4 +21,5 @@ public interface MarketDataService {
 
     void connect(String host, int port, int clientId);
     void disconnect();
+    boolean isConnected();
 }

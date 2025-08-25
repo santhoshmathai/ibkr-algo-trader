@@ -66,4 +66,9 @@ public class BacktestMarketDataService implements MarketDataService {
     public CompletableFuture<List<HistoricalData>> getDailyHistoricalData(String symbol, int days) {
         return null;
     }
+
+    @Override
+    public boolean isConnected() {
+        return true;
+    }
 }

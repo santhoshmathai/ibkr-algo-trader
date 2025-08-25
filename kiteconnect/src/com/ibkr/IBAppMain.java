@@ -33,9 +33,24 @@ public class IBAppMain {
             int clientId = appContext.getTwsClientId();
             logger.info("Connecting to TWS on {}:{} with clientId {}", host, port, clientId);
             marketDataService.connect(host, port, clientId);
-            // Assuming connect is synchronous enough or connectAck will confirm.
-            // For robust check, use a latch or callback set by connectAck.
-            logger.info("MarketDataService connect method called. Check logs for connectAck.");
+            logger.info("MarketDataService connect method called. Waiting for connection acknowledgment...");
+
+            // Wait for connection to be established
+            long startTime = System.currentTimeMillis();
+            while (!marketDataService.isConnected()) {
+                if (System.currentTimeMillis() - startTime > 10000) { // 10-second timeout
+                    logger.error("Connection to TWS timed out. Please check TWS and network settings.");
+                    return;
+                }
+                try {
+                    Thread.sleep(1000); // Wait 1 second before checking again
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    logger.error("Interrupted while waiting for TWS connection.", e);
+                    return;
+                }
+            }
+            logger.info("MarketDataService connected successfully.");
 
         } catch (Exception e) {
             logger.error("Error during IBAppMain execution: {}", e.getMessage(), e);

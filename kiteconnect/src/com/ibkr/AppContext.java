@@ -13,6 +13,7 @@ import com.ibkr.liquidity.DarkPoolScanner;
 import com.ibkr.risk.LiquidityMonitor;
 import com.ibkr.safeguards.CircuitBreakerMonitor;
 import com.ibkr.screener.StockScreener;
+import com.ibkr.service.BacktestMarketDataService;
 import com.ibkr.service.IbkrMarketDataService;
 import com.ibkr.service.IbkrOrderService;
 import com.ibkr.service.MarketDataService;
@@ -134,22 +135,24 @@ public class AppContext {
 
         if (!isBacktest) {
             // Level 2: Create services
-            this.marketDataService = new IbkrMarketDataService(this, this.instrumentRegistry, this.tickAggregator, null, this.marketDataHandler); // TickProcessor is null for now
+            this.marketDataService = new BacktestMarketDataService("stockdata/MW-NIFTY-500-01-Nov-2024.csv");
 
             this.tradingEngine = new TradingEngine(this, orderService, this.marketDataService, portfolioManager, this.sectorStrengthAnalyzer);
 
             // TickProcessor is now simplified, it just needs to know about the engine to pass it bars.
             this.tickProcessor = new TickProcessor(this.breakoutSignalGenerator, this.riskManager, this.tradingEngine, orderService, this);
             // Now set the tick processor in the market data service
-            ((IbkrMarketDataService)this.marketDataService).setTickProcessor(this.tickProcessor);
+//            ((IbkrMarketDataService)this.marketDataService).setTickProcessor(this.tickProcessor);
+//            ((IbkrMarketDataService) this.marketDataService).startMessageProcessing();
+
 
             this.tickAggregator.setTradingEngine(this.tradingEngine);
             this.stockScreener = new StockScreener(this.marketDataService);
 
 
             // Level 3: Components that depend on IbkrMarketDataService
-            this.clientSocket = ((IbkrMarketDataService)this.marketDataService).getClientSocket();
-            this.readerSignal = ((IbkrMarketDataService)this.marketDataService).getReaderSignal();
+            this.clientSocket = null;
+            this.readerSignal = null;
             this.ibOrderExecutor.setClientSocket(this.clientSocket);
 
             // Final Step: Initialize TradingEngine services that required the IbkrMarketDataService, breaking the circular dependency.
