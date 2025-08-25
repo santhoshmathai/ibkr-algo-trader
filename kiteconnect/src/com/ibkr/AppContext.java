@@ -90,6 +90,10 @@ public class AppContext {
     private final int twsClientId;
 
     public AppContext() {
+        this(false);
+    }
+
+    public AppContext(boolean isBacktest) {
         Properties properties = new Properties();
         try (InputStream inputStream = new FileInputStream("app.properties")) {
             properties.load(inputStream);
@@ -128,27 +132,36 @@ public class AppContext {
         this.ibOrderExecutor = new IBOrderExecutor(this.circuitBreakerMonitor, this.darkPoolScanner, this.instrumentRegistry, this.portfolioManager);
         OrderService orderService = new IbkrOrderService(this.ibOrderExecutor);
 
-        // Level 2: Create services
-        this.marketDataService = new IbkrMarketDataService(this, this.instrumentRegistry, this.tickAggregator, null, this.marketDataHandler); // TickProcessor is null for now
+        if (!isBacktest) {
+            // Level 2: Create services
+            this.marketDataService = new IbkrMarketDataService(this, this.instrumentRegistry, this.tickAggregator, null, this.marketDataHandler); // TickProcessor is null for now
 
-        this.tradingEngine = new TradingEngine(this, orderService, this.marketDataService, portfolioManager, this.sectorStrengthAnalyzer);
+            this.tradingEngine = new TradingEngine(this, orderService, this.marketDataService, portfolioManager, this.sectorStrengthAnalyzer);
 
-        // TickProcessor is now simplified, it just needs to know about the engine to pass it bars.
-        this.tickProcessor = new TickProcessor(this.breakoutSignalGenerator, this.riskManager, this.tradingEngine, orderService, this);
-        // Now set the tick processor in the market data service
-        ((IbkrMarketDataService)this.marketDataService).setTickProcessor(this.tickProcessor);
+            // TickProcessor is now simplified, it just needs to know about the engine to pass it bars.
+            this.tickProcessor = new TickProcessor(this.breakoutSignalGenerator, this.riskManager, this.tradingEngine, orderService, this);
+            // Now set the tick processor in the market data service
+            ((IbkrMarketDataService)this.marketDataService).setTickProcessor(this.tickProcessor);
 
-        this.tickAggregator.setTradingEngine(this.tradingEngine);
-        this.stockScreener = new StockScreener(this.marketDataService);
+            this.tickAggregator.setTradingEngine(this.tradingEngine);
+            this.stockScreener = new StockScreener(this.marketDataService);
 
 
-        // Level 3: Components that depend on IbkrMarketDataService
-        this.clientSocket = ((IbkrMarketDataService)this.marketDataService).getClientSocket();
-        this.readerSignal = ((IbkrMarketDataService)this.marketDataService).getReaderSignal();
-        this.ibOrderExecutor.setClientSocket(this.clientSocket);
+            // Level 3: Components that depend on IbkrMarketDataService
+            this.clientSocket = ((IbkrMarketDataService)this.marketDataService).getClientSocket();
+            this.readerSignal = ((IbkrMarketDataService)this.marketDataService).getReaderSignal();
+            this.ibOrderExecutor.setClientSocket(this.clientSocket);
 
-        // Final Step: Initialize TradingEngine services that required the IbkrMarketDataService, breaking the circular dependency.
-        this.tradingEngine.initializeServices(this.marketDataService, this.stockScreener);
+            // Final Step: Initialize TradingEngine services that required the IbkrMarketDataService, breaking the circular dependency.
+            this.tradingEngine.initializeServices(this.marketDataService, this.stockScreener);
+        } else {
+            this.marketDataService = null;
+            this.tradingEngine = null;
+            this.tickProcessor = null;
+            this.stockScreener = null;
+            this.clientSocket = null;
+            this.readerSignal = null;
+        }
 
         long orbTimeframeMinutes = tradingEngine.getOrbStrategyParameters().getOrbTimeframeMinutes();
         this.scheduler.schedule(() -> {
