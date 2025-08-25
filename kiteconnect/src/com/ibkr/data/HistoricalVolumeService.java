@@ -15,10 +15,10 @@ public class HistoricalVolumeService {
 
     private static final Logger logger = LoggerFactory.getLogger(HistoricalVolumeService.class);
     private final Map<String, Double> averageDailyVolume = new ConcurrentHashMap<>();
-    private final MarketDataService marketDataService;
+    private final HistoricalDataService historicalDataService;
 
-    public HistoricalVolumeService(MarketDataService marketDataService) {
-        this.marketDataService = marketDataService;
+    public HistoricalVolumeService(HistoricalDataService historicalDataService) {
+        this.historicalDataService = historicalDataService;
     }
 
     public void calculateAverageVolumes(List<String> symbols) {
@@ -29,7 +29,7 @@ public class HistoricalVolumeService {
         final int requiredBars = 15;
         Map<String, CompletableFuture<Double>> futures = new ConcurrentHashMap<>();
         for (String symbol : symbols) {
-            CompletableFuture<Double> avgVolumeFuture = marketDataService.getDailyHistoricalData(symbol, requiredBars)
+            CompletableFuture<Double> avgVolumeFuture = historicalDataService.getDailyHistoricalData(symbol, requiredBars)
                     .thenApply(bars -> {
                         if (bars == null || bars.isEmpty()) {
                             logger.warn("Received empty or null historical data for {}. Cannot calculate average volume.", symbol);
