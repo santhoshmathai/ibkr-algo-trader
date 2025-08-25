@@ -20,10 +20,19 @@ public class IbkrHistoricalDataDownloader {
     private static final Logger logger = LoggerFactory.getLogger(IbkrHistoricalDataDownloader.class);
 
     public static void main(String[] args) {
-        String symbol = "AAPL"; // Example symbol
-        String outputFilePath = "historical_data_" + symbol + ".csv";
-        String duration = "1 Y"; // Example: 1 year of data
-        String barSize = "1 day"; // Example: daily bars
+        if (args.length < 5) {
+            System.out.println("Usage: IbkrHistoricalDataDownloader <symbol> <date YYYYMMDD> <duration> <barSize> <outputFile>");
+            System.out.println("Example: IbkrHistoricalDataDownloader AAPL 20250820 \"60 Mins\" \"1 min\" aapl_data.csv");
+            return;
+        }
+
+        String symbol = args[0];
+        String date = args[1];
+        String duration = args[2];
+        String barSize = args[3];
+        String outputFilePath = args[4];
+
+        String endDateTime = date + " 16:00:00";
 
         AppContext appContext = new AppContext();
         MarketDataService marketDataService = appContext.getMarketDataService();
@@ -43,7 +52,7 @@ public class IbkrHistoricalDataDownloader {
             contract.exchange("SMART");
             contract.currency("USD");
 
-            List<HistoricalData> data = marketDataService.requestHistoricalData(contract, "", duration, barSize, "TRADES", 1, 2).get();
+            List<HistoricalData> data = marketDataService.requestHistoricalData(contract, endDateTime, duration, barSize, "TRADES", 1, 2).get();
 
             // 3. Write the data to CSV
             writeToCsv(data, outputFilePath);
