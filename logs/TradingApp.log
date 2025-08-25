@@ -71,3 +71,22 @@
 2025-08-24 23:41:59.137 [main] INFO  com.ibkr.core.TradingEngine - TradingEngine services initialized.
 2025-08-24 23:41:59.140 [main] INFO  com.ibkr.core.TradingEngine - Running pre-market screen...
 2025-08-24 23:41:59.141 [main] INFO  com.ibkr.core.TradingEngine - Pre-market screen completed. 0 stocks passed.
+2025-08-25 00:03:21.849 [main] INFO  c.ibkr.service.IbkrMarketDataService - Dispatching generalized historical data request for AAPL: ReqId=101, Duration=1 D, BarSize=1 day
+2025-08-25 00:03:21.858 [main] DEBUG c.ibkr.service.IbkrMarketDataService - Received historical bar for generalized request 101: Date 1672531200, C: 155.0
+2025-08-25 00:03:21.860 [main] INFO  c.ibkr.service.IbkrMarketDataService - HistoricalDataEnd for generalized request 101. Completed future with 1 bars.
+2025-08-25 00:03:22.004 [main] INFO  com.ibkr.strategy.orb.OrbStrategy - OrbStrategy initialized. Timeframe: 5 mins, SL ATR %: 0.1, Risk %: 0.01
+2025-08-25 00:03:22.007 [main] WARN  com.ibkr.core.TradingEngine - No symbols found in InstrumentRegistry at startup. Historical volume data will not be pre-loaded.
+2025-08-25 00:03:22.007 [main] INFO  com.ibkr.core.TradingEngine - TradingEngine initialized, including OrbStrategy, IntradayPriceActionAnalyzer, and VolumeSpikeAnalyzer.
+2025-08-25 00:03:22.011 [main] INFO  com.ibkr.core.TradingEngine - Cached PDH for AAPL: 160.0
+2025-08-25 00:03:22.013 [main] INFO  com.ibkr.strategy.orb.OrbStrategy - ORB daily state and buffers reset for symbol: AAPL
+2025-08-25 00:03:22.013 [main] INFO  com.ibkr.core.TradingEngine - ORB Strategy daily state reset and PDH set for symbol: AAPL
+2025-08-25 00:03:22.022 [main] INFO  com.ibkr.core.TradingEngine - Set 14-day avg opening range volume for AAPL: 0.0
+2025-08-25 00:03:22.024 [main] INFO  c.i.a.IntradayPriceActionAnalyzer - Creating new IntradayPriceActionState for symbol: AAPL
+2025-08-25 00:03:22.025 [main] INFO  c.i.a.IntradayPriceActionAnalyzer - Initialized IntradayPriceActionState for AAPL: PDH=160.0, DayOpen=155.0
+2025-08-25 00:03:22.025 [main] INFO  com.ibkr.core.TradingEngine - Daily strategy initialization complete for symbol: AAPL
+2025-08-25 00:03:22.047 [main] INFO  com.ibkr.strategy.orb.OrbStrategy - OrbStrategy initialized. Timeframe: 5 mins, SL ATR %: 0.1, Risk %: 0.01
+2025-08-25 00:03:22.048 [main] WARN  com.ibkr.core.TradingEngine - No symbols found in InstrumentRegistry at startup. Historical volume data will not be pre-loaded.
+2025-08-25 00:03:22.049 [main] INFO  com.ibkr.core.TradingEngine - TradingEngine initialized, including OrbStrategy, IntradayPriceActionAnalyzer, and VolumeSpikeAnalyzer.
+2025-08-25 00:03:22.068 [main] INFO  com.ibkr.core.TradingEngine - TradingEngine services initialized.
+2025-08-25 00:03:22.069 [main] INFO  com.ibkr.core.TradingEngine - Running pre-market screen...
+2025-08-25 00:03:22.070 [main] INFO  com.ibkr.core.TradingEngine - Pre-market screen completed. 0 stocks passed.
