@@ -36,6 +36,7 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
     private final ExecutorService executor;
     private MarketDataHandler marketDataHandler;
     private final AppContext appContext; // Added
+    private volatile boolean isConnected = false;
 
     // For historical data fetching
     private final Map<Integer, PreviousDayData> historicalDataRequests = new ConcurrentHashMap<>();
@@ -99,13 +100,18 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
 
     @Override
     public void disconnect() {
-        if (clientSocket.isConnected()) {
+        if (isConnected()) {
             logger.info("Disconnecting...");
             clientSocket.eDisconnect();
             logger.info("Disconnected.");
         } else {
             logger.info("Already disconnected.");
         }
+    }
+
+    @Override
+    public boolean isConnected() {
+        return isConnected;
     }
 
 
@@ -140,7 +146,7 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
         executor.execute(() -> {
             logger.info("Message processing thread started.");
 
-            while (this.clientSocket.isConnected()) {
+            while (reader.isAlive()) {
                 logger.debug("Client socket connected, waiting for signal.");
                 this.readerSignal.waitForSignal();
                 logger.debug("Signal received.");
@@ -459,7 +465,7 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
      * @param symbol The symbol string (for logging and mapping).
      */
     public void requestPreviousDayDataForSymbol(Contract contract, String symbol) {
-        if (!clientSocket.isConnected()) {
+        if (!isConnected()) {
             logger.error("Cannot request historical data for {}: Not connected to TWS.", symbol);
             return;
         }
@@ -503,7 +509,7 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
             Contract contract, String endDateTime, String durationStr, String barSizeSetting,
             String whatToShow, int useRTH, int formatDate) {
 
-        if (!clientSocket.isConnected()) {
+        if (!isConnected()) {
             logger.error("Cannot request historical data for {}: Not connected.", contract.symbol());
             return CompletableFuture.failedFuture(new IllegalStateException("Not connected to TWS."));
         }
@@ -529,7 +535,7 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
             logger.warn("Symbol list is empty. Cannot fetch previous day data.");
             return new ConcurrentHashMap<>(); // Return empty map
         }
-        if (!clientSocket.isConnected()) {
+        if (!isConnected()) {
             logger.error("Cannot fetch historical data. IBClient not connected.");
             return new ConcurrentHashMap<>();
         }
@@ -580,10 +586,6 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
         historicalDataRequests.clear();
 
         return new ConcurrentHashMap<>(successfullyFetchedPrevDayData); // Return a copy
-    }
-
-    public boolean isConnected() {
-        return clientSocket != null && clientSocket.isConnected();
     }
 
     public void initiateHistoricalDataFetch() {
@@ -773,11 +775,13 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
 
     @Override
     public void connectionClosed() {
+        isConnected = false;
         logger.info("Connection closed.");
     }
 
     @Override
     public void connectAck() {
+        isConnected = true;
         logger.info("Connect ACK received.");
         // This is a good place to confirm connection success if further actions depend on it.
     }
@@ -924,9 +928,9 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
 
     public void shutdown() {
         logger.info("Shutting down IBClient...");
-        if (clientSocket.isConnected()) {
+        if (isConnected()) {
             logger.info("Disconnecting TWS EClientSocket...");
-            clientSocket.eDisconnect();
+            disconnect();
         }
 
         logger.info("Shutting down IBClient message processing executor...");
