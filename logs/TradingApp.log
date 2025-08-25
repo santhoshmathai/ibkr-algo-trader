@@ -128,3 +128,45 @@
 2025-08-25 01:00:25.455 [main] INFO  com.ibkr.core.TradingEngine - TradingEngine services initialized.
 2025-08-25 01:00:25.458 [main] INFO  com.ibkr.core.TradingEngine - Running pre-market screen...
 2025-08-25 01:00:25.459 [main] INFO  com.ibkr.core.TradingEngine - Pre-market screen completed. 0 stocks passed.
+2025-08-25 13:44:10.546 [com.ibkr.data.HistoricalVolumeService.main()] INFO  com.ibkr.data.MarketDataHandler - Created data directory: /app/market_data
+2025-08-25 13:44:10.561 [com.ibkr.data.HistoricalVolumeService.main()] INFO  c.i.a.SupportResistanceAnalyzer - SupportResistanceAnalyzer initialized.
+2025-08-25 13:44:10.569 [com.ibkr.data.HistoricalVolumeService.main()] INFO  c.i.analysis.MarketSentimentAnalyzer - MarketSentimentAnalyzer initialized. Symbols: 25, Observation: 15 mins, Market Open: 09:30, Observation End: 09:45, Analysis Window End: 10:00
+2025-08-25 13:44:10.572 [com.ibkr.data.HistoricalVolumeService.main()] INFO  c.i.analysis.SectorStrengthAnalyzer - SectorStrengthAnalyzer initialized with 11 sectors and 34 symbol mappings.
+2025-08-25 13:47:48.680 [com.ibkr.data.HistoricalVolumeService.main()] INFO  com.ibkr.data.MarketDataHandler - Created data directory: /app/market_data
+2025-08-25 13:47:48.689 [com.ibkr.data.HistoricalVolumeService.main()] INFO  c.i.a.SupportResistanceAnalyzer - SupportResistanceAnalyzer initialized.
+2025-08-25 13:47:48.694 [com.ibkr.data.HistoricalVolumeService.main()] INFO  c.i.analysis.MarketSentimentAnalyzer - MarketSentimentAnalyzer initialized. Symbols: 25, Observation: 15 mins, Market Open: 09:30, Observation End: 09:45, Analysis Window End: 10:00
+2025-08-25 13:47:48.696 [com.ibkr.data.HistoricalVolumeService.main()] INFO  c.i.analysis.SectorStrengthAnalyzer - SectorStrengthAnalyzer initialized with 11 sectors and 34 symbol mappings.
+2025-08-25 13:47:48.698 [com.ibkr.data.HistoricalVolumeService.main()] INFO  com.ibkr.AppContext - AppContext initialized successfully.
+2025-08-25 13:50:09.911 [com.ibkr.data.HistoricalVolumeService.main()] INFO  com.ibkr.data.MarketDataHandler - Data directory already exists: /app/market_data
+2025-08-25 13:50:09.918 [com.ibkr.data.HistoricalVolumeService.main()] INFO  c.i.a.SupportResistanceAnalyzer - SupportResistanceAnalyzer initialized.
+2025-08-25 13:50:09.926 [com.ibkr.data.HistoricalVolumeService.main()] INFO  c.i.analysis.MarketSentimentAnalyzer - MarketSentimentAnalyzer initialized. Symbols: 25, Observation: 15 mins, Market Open: 09:30, Observation End: 09:45, Analysis Window End: 10:00
+2025-08-25 13:50:09.928 [com.ibkr.data.HistoricalVolumeService.main()] INFO  c.i.analysis.SectorStrengthAnalyzer - SectorStrengthAnalyzer initialized with 11 sectors and 34 symbol mappings.
+2025-08-25 13:51:14.811 [com.ibkr.data.HistoricalVolumeService.main()] INFO  com.ibkr.data.MarketDataHandler - Data directory already exists: /app/market_data
+2025-08-25 13:51:14.818 [com.ibkr.data.HistoricalVolumeService.main()] INFO  c.i.a.SupportResistanceAnalyzer - SupportResistanceAnalyzer initialized.
+2025-08-25 13:51:14.824 [com.ibkr.data.HistoricalVolumeService.main()] INFO  c.i.analysis.MarketSentimentAnalyzer - MarketSentimentAnalyzer initialized. Symbols: 25, Observation: 15 mins, Market Open: 09:30, Observation End: 09:45, Analysis Window End: 10:00
+2025-08-25 13:51:14.826 [com.ibkr.data.HistoricalVolumeService.main()] INFO  c.i.analysis.SectorStrengthAnalyzer - SectorStrengthAnalyzer initialized with 11 sectors and 34 symbol mappings.
+2025-08-25 13:53:33.564 [main] INFO  com.ibkr.data.MarketDataHandler - Data directory already exists: /app/market_data
+2025-08-25 13:53:33.570 [main] INFO  c.i.a.SupportResistanceAnalyzer - SupportResistanceAnalyzer initialized.
+2025-08-25 13:53:33.576 [main] INFO  c.i.analysis.MarketSentimentAnalyzer - MarketSentimentAnalyzer initialized. Symbols: 25, Observation: 15 mins, Market Open: 09:30, Observation End: 09:45, Analysis Window End: 10:00
+2025-08-25 13:53:33.578 [main] INFO  c.i.analysis.SectorStrengthAnalyzer - SectorStrengthAnalyzer initialized with 11 sectors and 34 symbol mappings.
+2025-08-25 13:54:01.570 [main] INFO  com.ibkr.data.MarketDataHandler - Data directory already exists: /app/market_data
+2025-08-25 13:54:01.579 [main] INFO  c.i.a.SupportResistanceAnalyzer - SupportResistanceAnalyzer initialized.
+2025-08-25 13:54:01.589 [main] INFO  c.i.analysis.MarketSentimentAnalyzer - MarketSentimentAnalyzer initialized. Symbols: 25, Observation: 15 mins, Market Open: 09:30, Observation End: 09:45, Analysis Window End: 10:00
+2025-08-25 13:54:01.592 [main] INFO  c.i.analysis.SectorStrengthAnalyzer - SectorStrengthAnalyzer initialized with 11 sectors and 34 symbol mappings.
+2025-08-25 13:54:01.624 [main] INFO  com.ibkr.AppContext - AppContext initialized successfully.
+2025-08-25 13:54:01.660 [main] INFO  c.ibkr.service.IbkrMarketDataService - Connecting to 127.0.0.1:7497 with clientId: 99
+2025-08-25 13:54:01.700 [main] ERROR c.ibkr.service.IbkrMarketDataService - TWS API Connectivity Error - ID: -1, Code: 502, Msg: Connectivity Issue: Couldn't connect to TWS. Confirm that "Enable ActiveX and Socket Clients" is enabled and connection port is the same as "Socket Port" on the TWS "Edit->Global Configuration...->API->Settings" menu. Live Trading ports: TWS: 7496; IB Gateway: 4001. Simulated Trading ports for new installations of version 954.1 or newer: TWS: 7497; IB Gateway: 4002
+2025-08-25 13:54:01.700 [main] WARN  c.ibkr.service.IbkrMarketDataService - Connection attempt made, but isConnected() is false. Check TWS logs and ensure EWrapper.connectAck is received.
+2025-08-25 13:54:03.704 [main] INFO  c.ibkr.data.HistoricalVolumeService - Starting historical daily volume calculation for 4 symbols.
+2025-08-25 13:54:03.712 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for AAPL: 15 days
+2025-08-25 13:54:03.713 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for AAPL: Not connected.
+2025-08-25 13:54:03.720 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for AAPL: Not connected to TWS.
+2025-08-25 13:54:03.721 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for TSLA: 15 days
+2025-08-25 13:54:03.721 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for TSLA: Not connected.
+2025-08-25 13:54:03.721 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for TSLA: Not connected to TWS.
+2025-08-25 13:54:03.722 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for MSFT: 15 days
+2025-08-25 13:54:03.722 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for MSFT: Not connected.
+2025-08-25 13:54:03.722 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for MSFT: Not connected to TWS.
+2025-08-25 13:54:03.722 [main] INFO  com.ibkr.data.HistoricalDataService - Requesting daily historical data for GOOG: 15 days
+2025-08-25 13:54:03.722 [main] ERROR c.ibkr.service.IbkrMarketDataService - Cannot request historical data for GOOG: Not connected.
+2025-08-25 13:54:03.723 [main] ERROR com.ibkr.data.HistoricalDataService - Failed to fetch daily data for GOOG: Not connected to TWS.

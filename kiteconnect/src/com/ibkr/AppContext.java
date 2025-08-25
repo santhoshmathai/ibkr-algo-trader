@@ -154,6 +154,32 @@ public class AppContext {
 
             // Final Step: Initialize TradingEngine services that required the IbkrMarketDataService, breaking the circular dependency.
             this.tradingEngine.initializeServices(this.marketDataService, this.stockScreener);
+
+            // Schedule tasks only in live mode
+            long orbTimeframeMinutes = tradingEngine.getOrbStrategyParameters().getOrbTimeframeMinutes();
+            this.scheduler.schedule(() -> {
+                try {
+                    tradingEngine.onOpeningRangeEnd();
+                } catch (Exception e) {
+                    logger.error("Error executing scheduled task 'onOpeningRangeEnd'", e);
+                }
+            }, orbTimeframeMinutes, TimeUnit.MINUTES);
+
+            // Schedule end-of-day task
+            ZonedDateTime now = ZonedDateTime.now(ZoneId.of("America/New_York"));
+            ZonedDateTime endOfDay = now.with(LocalTime.of(16, 0));
+            if (now.isAfter(endOfDay)) {
+                endOfDay = endOfDay.plusDays(1);
+            }
+            long delay = Duration.between(now, endOfDay).toMillis();
+            this.scheduler.schedule(() -> {
+                try {
+                    tradingEngine.closeAllPositions();
+                } catch (Exception e) {
+                    logger.error("Error executing scheduled task 'closeAllPositions'", e);
+                }
+            }, delay, TimeUnit.MILLISECONDS);
+
         } else {
             this.marketDataService = null;
             this.tradingEngine = null;
@@ -163,32 +189,7 @@ public class AppContext {
             this.readerSignal = null;
         }
 
-        long orbTimeframeMinutes = tradingEngine.getOrbStrategyParameters().getOrbTimeframeMinutes();
-        this.scheduler.schedule(() -> {
-            try {
-                tradingEngine.onOpeningRangeEnd();
-            } catch (Exception e) {
-                logger.error("Error executing scheduled task 'onOpeningRangeEnd'", e);
-            }
-        }, orbTimeframeMinutes, TimeUnit.MINUTES);
-
-        // Schedule end-of-day task
-        ZonedDateTime now = ZonedDateTime.now(ZoneId.of("America/New_York"));
-        ZonedDateTime endOfDay = now.with(LocalTime.of(16, 0));
-        if (now.isAfter(endOfDay)) {
-            endOfDay = endOfDay.plusDays(1);
-        }
-        long delay = Duration.between(now, endOfDay).toMillis();
-        this.scheduler.schedule(() -> {
-            try {
-                tradingEngine.closeAllPositions();
-            } catch (Exception e) {
-                logger.error("Error executing scheduled task 'closeAllPositions'", e);
-            }
-        }, delay, TimeUnit.MILLISECONDS);
-
-
-        logger.info("AppContext initialized successfully with new refactored flow.");
+        logger.info("AppContext initialized successfully.");
     }
 
     private Set<String> loadTop100USStocks(Properties properties) {

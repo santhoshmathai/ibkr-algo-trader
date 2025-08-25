@@ -117,6 +117,17 @@ public class TradingEngine {
         // Load historical volume data at startup using the defined list of stocks from AppContext
         Set<String> symbolsToMonitor = appContext.getTop100USStocks();
         if (symbolsToMonitor != null && !symbolsToMonitor.isEmpty()) {
+            // Ensure all contracts for the symbols to be monitored are registered first.
+            logger.info("Registering contracts for {} symbols before data loading.", symbolsToMonitor.size());
+            for (String symbol : symbolsToMonitor) {
+                com.ib.client.Contract contract = new com.ib.client.Contract();
+                contract.symbol(symbol);
+                contract.secType("STK");
+                contract.currency("USD");
+                contract.exchange("SMART");
+                instrumentRegistry.registerInstrument(contract);
+            }
+
             logger.info("Pre-loading historical daily volume data for {} symbols.", symbolsToMonitor.size());
             historicalVolumeService.calculateAverageVolumes(new ArrayList<>(symbolsToMonitor));
         } else {
