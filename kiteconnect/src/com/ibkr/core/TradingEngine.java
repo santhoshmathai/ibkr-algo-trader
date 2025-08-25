@@ -284,8 +284,12 @@ public class TradingEngine {
 
         // Call OrbStrategy
         if (orbStrategy != null) {
+            // Calculate average volume over the last 10 bars for context.
+            double averageVolume = calculateAverageVolume(symbol, 10);
+            OrbStrategy.VolumeData volumeData = new OrbStrategy.VolumeData(volumeForBar, averageVolume);
+
             // Pass the OHLC part of the new bar to the strategy
-            TradingSignal orbSignal = orbStrategy.processBar(symbol, ohlcPortion, volumeForBar, barTimestamp);
+            TradingSignal orbSignal = orbStrategy.processBar(symbol, ohlcPortion, barTimestamp, volumeData);
             if (orbSignal != null && orbSignal.getAction() != TradeAction.HOLD) {
                 logger.info("TradingEngine: ORB Strategy generated signal for {}: {}", symbol, orbSignal);
                 // The signal is not processed here anymore. It will be processed by the screener.
