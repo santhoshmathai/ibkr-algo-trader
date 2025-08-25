@@ -28,6 +28,7 @@ public class OrbStrategyState {
 
     // Calculated values
     public double relativeVolume = 0.0; // New field for the calculated relative volume
+    public double averageVolumeLastN = 0.0; // Average volume of N bars before the ORB range
 
 
     // Trade Management State
@@ -53,6 +54,7 @@ public class OrbStrategyState {
         this.atr14day = 0.0;
         this.avgOpeningRangeVolume14day = 0.0;
         this.relativeVolume = 0.0;
+        this.averageVolumeLastN = 0.0;
         this.stopOrderPlaced = false;
     }
 

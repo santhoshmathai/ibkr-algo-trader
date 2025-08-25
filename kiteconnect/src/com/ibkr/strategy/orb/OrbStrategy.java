@@ -31,6 +31,19 @@ public class OrbStrategy {
     private final Map<String, List<Long>> oneMinuteVolumeBuffer = new ConcurrentHashMap<>();
     private final ZoneId marketTimeZone;
 
+    /**
+     * Inner class to hold volume data for a bar.
+     */
+    public static class VolumeData {
+        public final long currentCandleVolume;
+        public final double averageVolumeLastN;
+
+        public VolumeData(long currentCandleVolume, double averageVolumeLastN) {
+            this.currentCandleVolume = currentCandleVolume;
+            this.averageVolumeLastN = averageVolumeLastN;
+        }
+    }
+
     public OrbStrategy(AppContext appContext, OrbStrategyParameters params, String marketTimeZoneId) {
         this.appContext = appContext;
         this.params = params;
@@ -61,12 +74,17 @@ public class OrbStrategy {
      *
      * @param symbol       The stock symbol.
      * @param bar          The 1-minute OHLC data.
-     * @param volume       The volume for the 1-minute bar.
      * @param barTimestamp The starting timestamp of the bar.
+     * @param volumeData   An object containing the volume for the current bar and the recent average volume.
      * @return A TradingSignal if entry conditions are met, otherwise null.
      */
-    public TradingSignal processBar(String symbol, OHLC bar, long volume, long barTimestamp) {
+    public TradingSignal processBar(String symbol, OHLC bar, long barTimestamp, VolumeData volumeData) {
         OrbStrategyState state = getState(symbol);
+        // Store the average volume from the preceding period for later checks.
+        if (state.averageVolumeLastN == 0) { // Store it once before the range is defined
+            state.averageVolumeLastN = volumeData.averageVolumeLastN;
+        }
+
 
         if (state.rangeDefined || state.stopOrderPlaced) {
             return null; // Opening range already defined and processed for today.
@@ -76,7 +94,7 @@ public class OrbStrategy {
         List<OHLC> barBuffer = oneMinuteBarBuffer.computeIfAbsent(symbol, k -> new ArrayList<>());
         List<Long> volumeBuffer = oneMinuteVolumeBuffer.computeIfAbsent(symbol, k -> new ArrayList<>());
         barBuffer.add(bar);
-        volumeBuffer.add(volume);
+        volumeBuffer.add(volumeData.currentCandleVolume);
 
         logger.debug("Buffered 1-min bar {}/{} for {}. Time: {}", barBuffer.size(), params.getOrbTimeframeMinutes(), symbol, LocalTime.ofInstant(java.time.Instant.ofEpochMilli(barTimestamp), marketTimeZone));
 
@@ -141,6 +159,14 @@ public class OrbStrategy {
 
         // Mark as processed to prevent duplicate orders
         state.stopOrderPlaced = true;
+
+        // Volume Confirmation Check
+        double volumeConfirmationFactor = 1.5; // Example: ORB volume must be 50% higher than recent average
+        if (state.averageVolumeLastN > 0 && state.openingRangeVolume < (state.averageVolumeLastN * volumeConfirmationFactor)) {
+            logger.info("No trade for {}: Opening range volume ({}) did not meet the confirmation threshold against the average volume ({}).",
+                    symbol, state.openingRangeVolume, String.format("%.2f", state.averageVolumeLastN));
+            return null;
+        }
 
         if (state.candleDirection == OrbStrategyState.CandleDirection.DOJI) {
             logger.info("No trade for {}: Opening range candle was a Doji.", symbol);
