@@ -389,6 +389,7 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
 
     @Override
     public void historicalData(int reqId, Bar bar) {
+        logger.info("HistoricalData - ReqId: {}, Bar: {}", reqId, bar);
         // New generalized logic
         if (historicalDataFutures.containsKey(reqId)) {
             logger.debug("Received historical bar for generalized request {}: Date {}, C: {}", reqId, bar.time(), bar.close());
@@ -426,6 +427,7 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
 
     @Override
     public void historicalDataEnd(int reqId, String startDateStr, String endDateStr) {
+        logger.info("HistoricalDataEnd - ReqId: {}, StartDate: {}, EndDate: {}", reqId, startDateStr, endDateStr);
         // New generalized logic
         if (historicalDataFutures.containsKey(reqId)) {
             CompletableFuture<List<com.zerodhatech.models.HistoricalData>> future = historicalDataFutures.get(reqId);

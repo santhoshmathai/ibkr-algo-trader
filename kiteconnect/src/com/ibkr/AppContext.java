@@ -143,7 +143,6 @@ public class AppContext {
             this.tickProcessor = new TickProcessor(this.breakoutSignalGenerator, this.riskManager, this.tradingEngine, orderService, this);
             // Now set the tick processor in the market data service
 //            ((IbkrMarketDataService)this.marketDataService).setTickProcessor(this.tickProcessor);
-//            ((IbkrMarketDataService) this.marketDataService).startMessageProcessing();
 
 
             this.tickAggregator.setTradingEngine(this.tradingEngine);
