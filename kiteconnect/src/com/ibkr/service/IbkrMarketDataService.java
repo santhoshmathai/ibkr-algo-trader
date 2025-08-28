@@ -10,9 +10,15 @@ import com.ibkr.data.MarketDataHandler;
 import com.ibkr.models.PreviousDayData; // Added
 import com.ibkr.data.TickAggregator;
 import com.ibkr.strategy.TickProcessor;
+import com.zerodhatech.models.HistoricalData;
 import com.zerodhatech.models.Tick;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList; // Added for TagValue in reqMktDepth
 import java.util.List;
 import java.util.Map;
@@ -23,10 +29,6 @@ import java.util.concurrent.CountDownLatch; // Added
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit; // Added
-import java.time.LocalDateTime; // Added
-import java.time.format.DateTimeFormatter; // Added
-import java.time.LocalDate;
-import java.time.ZoneId;
 
 public class IbkrMarketDataService implements EWrapper, MarketDataService {
     private static final Logger logger = LoggerFactory.getLogger(IbkrMarketDataService.class);
@@ -47,20 +49,20 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
     private static final DateTimeFormatter IB_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd  HH:mm:ss");
 
     // New members for generalized historical data fetching
-    private final Map<Integer, CompletableFuture<List<com.zerodhatech.models.HistoricalData>>> historicalDataFutures = new ConcurrentHashMap<>();
-    private final Map<Integer, List<com.zerodhatech.models.HistoricalData>> historicalDataBuffer = new ConcurrentHashMap<>();
+    private final Map<Integer, CompletableFuture<List<HistoricalData>>> historicalDataFutures = new ConcurrentHashMap<>();
+    private final Map<Integer, List<HistoricalData>> historicalDataBuffer = new ConcurrentHashMap<>();
     private final Map<Integer, Integer> historicalDataFormatRequests = new ConcurrentHashMap<>();
 
 
     public IbkrMarketDataService(AppContext appContext, InstrumentRegistry instrumentRegistry, TickAggregator tickAggregator,
-                    TickProcessor tickProcessor,
-                    MarketDataHandler marketDataHandler) {
+                                 TickProcessor tickProcessor,
+                                 MarketDataHandler marketDataHandler) {
         this(appContext, instrumentRegistry, tickAggregator, tickProcessor, marketDataHandler, new EJavaSignal());
     }
 
     public IbkrMarketDataService(AppContext appContext, InstrumentRegistry instrumentRegistry, TickAggregator tickAggregator,
-                    TickProcessor tickProcessor,
-                    MarketDataHandler marketDataHandler, EReaderSignal signal) {
+                                 TickProcessor tickProcessor,
+                                 MarketDataHandler marketDataHandler, EReaderSignal signal) {
         this.appContext = appContext; // Added
         this.instrumentRegistry = instrumentRegistry;
         this.tickAggregator = tickAggregator;
@@ -72,7 +74,7 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
     }
 
     @Override
-    public CompletableFuture<List<com.zerodhatech.models.HistoricalData>> getDailyHistoricalData(String symbol, int days) {
+    public CompletableFuture<List<HistoricalData>> getDailyHistoricalData(String symbol, int days) {
         return null;
     }
 
@@ -92,9 +94,9 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
             logger.info("Connecting to {}:{} with clientId: {}", host, port, clientId);
             clientSocket.eConnect(host, port, clientId);
             if (clientSocket.isConnected()) {
-                 logger.info("Successfully connected (according to isConnected()). Awaiting connectAck.");
+                logger.info("Successfully connected (according to isConnected()). Awaiting connectAck.");
             } else {
-                 logger.warn("Connection attempt made, but isConnected() is false. Check TWS logs and ensure EWrapper.connectAck is received.");
+                logger.warn("Connection attempt made, but isConnected() is false. Check TWS logs and ensure EWrapper.connectAck is received.");
             }
         } else {
             logger.info("Already connected or connection attempt in progress.");
@@ -210,7 +212,8 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
     }
 
     // Implement all other required EWrapper methods...
-    @Override public void error(int id, int errorCode, String errorMsg) {
+    @Override
+    public void error(int id, int errorCode, String errorMsg) {
         String enhancedErrorMsg = errorMsg;
         // Connectivity error codes from https://interactivebrokers.github.io/tws-api/message_codes.html
         // 502: Couldn't connect to TWS.
@@ -403,8 +406,8 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
         if (historicalDataFutures.containsKey(reqId)) {
             try {
                 int formatDate = historicalDataFormatRequests.getOrDefault(reqId, 1); // Default to 1 if not found
-                com.zerodhatech.models.HistoricalData historicalData = convertIbBarToHistoricalData(bar, formatDate, symbol);
-                List<com.zerodhatech.models.HistoricalData> bars = historicalDataBuffer.computeIfAbsent(reqId, k -> new ArrayList<>());
+                HistoricalData historicalData = convertIbBarToHistoricalData(bar, formatDate, symbol);
+                List<HistoricalData> bars = historicalDataBuffer.computeIfAbsent(reqId, k -> new ArrayList<>());
                 bars.add(historicalData);
             } catch (Exception e) {
                 logger.error("Error processing historical bar for reqId {}: {}", reqId, e.getMessage(), e);
@@ -430,12 +433,13 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
         logger.info("HistoricalDataEnd - ReqId: {}, StartDate: {}, EndDate: {}", reqId, startDateStr, endDateStr);
         // New generalized logic
         if (historicalDataFutures.containsKey(reqId)) {
-            CompletableFuture<List<com.zerodhatech.models.HistoricalData>> future = historicalDataFutures.get(reqId);
-            List<com.zerodhatech.models.HistoricalData> result = historicalDataBuffer.getOrDefault(reqId, new ArrayList<>());
+            CompletableFuture<List<HistoricalData>> future = historicalDataFutures.get(reqId);
+            List<HistoricalData> result = historicalDataBuffer.getOrDefault(reqId, new ArrayList<>());
             future.complete(result);
             logger.info("HistoricalDataEnd for generalized request {}. Completed future with {} bars.", reqId, result.size());
             historicalDataFutures.remove(reqId);
             historicalDataBuffer.remove(reqId);
+            historicalDataFormatRequests.remove(reqId); // Clean up format map
             return;
         }
 
@@ -463,8 +467,9 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
     /**
      * Requests historical data for the previous trading day for a single symbol.
      * The received data will be processed by the historicalData and historicalDataEnd callbacks.
+     *
      * @param contract The IB Contract object for the symbol.
-     * @param symbol The symbol string (for logging and mapping).
+     * @param symbol   The symbol string (for logging and mapping).
      */
     public void requestPreviousDayDataForSymbol(Contract contract, String symbol) {
         if (!isConnected()) {
@@ -478,6 +483,7 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
 
         int reqId = appContext.getNextRequestId();
         appContext.registerHistoricalDataRequest(reqId, symbol);
+        historicalDataFormatRequests.put(reqId, 1); // Assuming PDH requests use formatDate=1
 
         // For previous day's bar, endDateTime can be empty.
         // TWS will provide the last available trading day's data.
@@ -507,7 +513,7 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
      * @param formatDate     1 for yyyyMMdd HH:mm:ss, 2 for epoch seconds.
      * @return A CompletableFuture which will contain the list of HistoricalData bars.
      */
-    public CompletableFuture<List<com.zerodhatech.models.HistoricalData>> requestHistoricalData(
+    public CompletableFuture<List<HistoricalData>> requestHistoricalData(
             Contract contract, String endDateTime, String durationStr, String barSizeSetting,
             String whatToShow, int useRTH, int formatDate) {
 
@@ -517,7 +523,7 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
         }
 
         int reqId = appContext.getNextRequestId();
-        CompletableFuture<List<com.zerodhatech.models.HistoricalData>> future = new CompletableFuture<>();
+        CompletableFuture<List<HistoricalData>> future = new CompletableFuture<>();
         historicalDataFutures.put(reqId, future);
         historicalDataBuffer.put(reqId, new ArrayList<>()); // Initialize buffer
         historicalDataFormatRequests.put(reqId, formatDate);
@@ -569,6 +575,8 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
 
             PreviousDayData placeholder = new PreviousDayData(symbol, 0, 0, 0); // Add 0 for previousLow
             historicalDataRequests.put(reqId, placeholder);
+            historicalDataFormatRequests.put(reqId, formatDate);
+
 
             logger.debug("Requesting historical data for {}: ReqId={}, Contract={}, EndDT={}, Duration={}, BarSize={}, WhatToShow={}, UseRTH={}, Format={}",
                     symbol, reqId, contract.symbol(), endDateTime, durationStr, barSizeSetting, whatToShow, useRTH, formatDate);
@@ -580,7 +588,7 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
 
         if (!allDataReceived) {
             logger.warn("Timed out waiting for all historical data. Received {} of {} responses.",
-                        successfullyFetchedPrevDayData.size(), symbols.size());
+                    successfullyFetchedPrevDayData.size(), symbols.size());
         } else {
             logger.info("Successfully received all historical data responses (or marked as complete).");
         }
@@ -603,7 +611,7 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
         if (!isConnected()) {
             logger.error("Cannot fetch historical data. IBClient not connected.");
             if (appContext.getPreviousDayDataMap() != null) {
-                 appContext.getPreviousDayDataMap().clear();
+                appContext.getPreviousDayDataMap().clear();
             }
             return;
         }
@@ -621,9 +629,9 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
                     appContext.getSupportResistanceAnalyzer().clearAllLevels();
                     for (String symbol : fetchedData.keySet()) {
                         if (appContext.getPreviousDayData(symbol) != null) { // Ensure data is in AppContext
-                             appContext.getSupportResistanceAnalyzer().calculateDailyLevels(symbol);
+                            appContext.getSupportResistanceAnalyzer().calculateDailyLevels(symbol);
                         } else {
-                             logger.warn("Skipping S/R calculation for symbol {} as its PreviousDayData is null in AppContext after fetch.", symbol);
+                            logger.warn("Skipping S/R calculation for symbol {} as its PreviousDayData is null in AppContext after fetch.", symbol);
                         }
                     }
                     logger.info("Daily Support/Resistance level calculation complete.");
@@ -637,7 +645,7 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
             } catch (Exception e) {
                 logger.error("Error during historical data fetch initiation or S/R calculation: {}", e.getMessage(), e);
                 if (appContext.getPreviousDayDataMap() != null) {
-                     appContext.getPreviousDayDataMap().clear();
+                    appContext.getPreviousDayDataMap().clear();
                 }
             }
         } else {
@@ -775,7 +783,6 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
     public void completedOrdersEnd() {
 
     }
-
 
 
     @Override
@@ -958,8 +965,8 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
         logger.info("IBClient shutdown complete.");
     }
 
-    private com.zerodhatech.models.HistoricalData convertIbBarToHistoricalData(Bar bar, int formatDate, String symbol) {
-        com.zerodhatech.models.HistoricalData historicalData = new com.zerodhatech.models.HistoricalData();
+    private HistoricalData convertIbBarToHistoricalData(Bar bar, int formatDate, String symbol) {
+        HistoricalData historicalData = new HistoricalData();
 
         try {
             // Handle timestamp conversion based on formatDate
@@ -993,7 +1000,7 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
         historicalData.high = bar.high();
         historicalData.low = bar.low();
         historicalData.close = bar.close();
-        historicalData.volume = bar.volume();
+        historicalData.volume = bar.volume() * 100;
 
         return historicalData;
     }
