@@ -77,11 +77,23 @@ public class TradingCalculations {
      */
     public static double calculateAverageVolume(List<HistoricalData> bars) {
         if (bars == null || bars.isEmpty()) {
+            logger.warn("No bars provided for average volume calculation");
             return 0.0;
         }
-        return bars.stream()
+
+        // Debug: log all volumes
+        logger.debug("Calculating average volume from {} bars:", bars.size());
+        for (int i = 0; i < Math.min(bars.size(), 5); i++) { // Log first 5 bars
+            HistoricalData bar = bars.get(i);
+            logger.debug("Bar {}: timestamp={}, volume={}", i, bar.timeStamp, bar.volume);
+        }
+
+        double average = bars.stream()
                 .mapToLong(bar -> bar.volume)
                 .average()
                 .orElse(0.0);
+
+        logger.debug("Calculated average volume: {}", average);
+        return average;
     }
 }

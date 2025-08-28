@@ -135,19 +135,14 @@ public class AppContext {
 
         if (!isBacktest) {
             // Level 2: Create services
-            // Pass null for TickProcessor to break circular dependency, it will be set later.
-            IbkrMarketDataService ibkrMarketDataService = new IbkrMarketDataService(this, this.instrumentRegistry, this.tickAggregator, null, this.marketDataHandler);
-            this.marketDataService = ibkrMarketDataService;
-            this.clientSocket = ibkrMarketDataService.getClientSocket();
-            this.readerSignal = ibkrMarketDataService.getReaderSignal();
-
+            this.marketDataService = new BacktestMarketDataService("stockdata/MW-NIFTY-500-01-Nov-2024.csv");
 
             this.tradingEngine = new TradingEngine(this, orderService, this.marketDataService, portfolioManager, this.sectorStrengthAnalyzer);
 
             // TickProcessor is now simplified, it just needs to know about the engine to pass it bars.
             this.tickProcessor = new TickProcessor(this.breakoutSignalGenerator, this.riskManager, this.tradingEngine, orderService, this);
             // Now set the tick processor in the market data service
-            ((IbkrMarketDataService)this.marketDataService).setTickProcessor(this.tickProcessor);
+//            ((IbkrMarketDataService)this.marketDataService).setTickProcessor(this.tickProcessor);
 
 
             this.tickAggregator.setTradingEngine(this.tradingEngine);
@@ -155,6 +150,8 @@ public class AppContext {
 
 
             // Level 3: Components that depend on IbkrMarketDataService
+            this.clientSocket = null;
+            this.readerSignal = null;
             this.ibOrderExecutor.setClientSocket(this.clientSocket);
 
             // Final Step: Initialize TradingEngine services that required the IbkrMarketDataService, breaking the circular dependency.
