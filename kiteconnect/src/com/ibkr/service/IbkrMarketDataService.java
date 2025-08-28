@@ -25,6 +25,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit; // Added
 import java.time.LocalDateTime; // Added
 import java.time.format.DateTimeFormatter; // Added
+import java.time.LocalDate;
+import java.time.ZoneId;
 
 public class IbkrMarketDataService implements EWrapper, MarketDataService {
     private static final Logger logger = LoggerFactory.getLogger(IbkrMarketDataService.class);
@@ -47,6 +49,7 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
     // New members for generalized historical data fetching
     private final Map<Integer, CompletableFuture<List<com.zerodhatech.models.HistoricalData>>> historicalDataFutures = new ConcurrentHashMap<>();
     private final Map<Integer, List<com.zerodhatech.models.HistoricalData>> historicalDataBuffer = new ConcurrentHashMap<>();
+    private final Map<Integer, Integer> historicalDataFormatRequests = new ConcurrentHashMap<>();
 
 
     public IbkrMarketDataService(AppContext appContext, InstrumentRegistry instrumentRegistry, TickAggregator tickAggregator,
@@ -389,34 +392,31 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
 
     @Override
     public void historicalData(int reqId, Bar bar) {
-        logger.info("HistoricalData - ReqId: {}, Bar: {}", reqId, bar);
-        // New generalized logic
+        String symbol = appContext.getSymbolForHistoricalDataRequest(reqId);
+        if (symbol == null) {
+            symbol = "UNKNOWN"; // Fallback
+        }
+
+        logger.debug("RAW HISTORICAL DATA - ReqId: {}, Symbol: {}, Time: '{}', Volume: {}",
+                reqId, symbol, bar.time(), bar.volume());
+
         if (historicalDataFutures.containsKey(reqId)) {
-            logger.debug("Received historical bar for generalized request {}: Date {}, C: {}", reqId, bar.time(), bar.close());
-            List<com.zerodhatech.models.HistoricalData> bars = historicalDataBuffer.computeIfAbsent(reqId, k -> new ArrayList<>());
-            com.zerodhatech.models.HistoricalData historicalData = new com.zerodhatech.models.HistoricalData();
-            // Note: IB's bar.time() can be a date string or epoch seconds depending on formatDate
-            // Assuming formatDate=2 (epoch seconds) for new requests.
             try {
-                historicalData.timeStamp = bar.time(); // Assuming it's in a format HistoricalData can use or we convert it
+                int formatDate = historicalDataFormatRequests.getOrDefault(reqId, 1); // Default to 1 if not found
+                com.zerodhatech.models.HistoricalData historicalData = convertIbBarToHistoricalData(bar, formatDate, symbol);
+                List<com.zerodhatech.models.HistoricalData> bars = historicalDataBuffer.computeIfAbsent(reqId, k -> new ArrayList<>());
+                bars.add(historicalData);
             } catch (Exception e) {
-                logger.error("Could not parse historical bar timestamp: {}", bar.time(), e);
+                logger.error("Error processing historical bar for reqId {}: {}", reqId, e.getMessage(), e);
             }
-            historicalData.open = bar.open();
-            historicalData.high = bar.high();
-            historicalData.low = bar.low();
-            historicalData.close = bar.close();
-            historicalData.volume = bar.volume();
-            bars.add(historicalData);
             return;
         }
 
         // Fallback to existing PDH logic
-        logger.info("HistoricalData - ReqId: {}, Symbol: {}, Date: {}, O: {}, H: {}, L: {}, C: {}, Volume: {}",
-                reqId, appContext.getSymbolForHistoricalDataRequest(reqId), bar.time(), bar.open(), bar.high(), bar.low(), bar.close(), bar.volume());
+        logger.info("HistoricalData (PDH) - ReqId: {}, Symbol: {}, Date: {}, O: {}, H: {}, L: {}, C: {}, Volume: {}",
+                reqId, symbol, bar.time(), bar.open(), bar.high(), bar.low(), bar.close(), bar.volume());
 
-        String symbol = appContext.getSymbolForHistoricalDataRequest(reqId);
-        if (symbol != null) {
+        if (symbol != null && !symbol.equals("UNKNOWN")) {
             PreviousDayData pdhData = new PreviousDayData(symbol, bar.high(), bar.low(), bar.close());
             appContext.updatePdhForSymbol(symbol, pdhData);
             logger.info("Updated PDH for {} via historicalData callback: H={}, L={}, C={}", symbol, bar.high(), bar.low(), bar.close());
@@ -520,6 +520,9 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
         CompletableFuture<List<com.zerodhatech.models.HistoricalData>> future = new CompletableFuture<>();
         historicalDataFutures.put(reqId, future);
         historicalDataBuffer.put(reqId, new ArrayList<>()); // Initialize buffer
+        historicalDataFormatRequests.put(reqId, formatDate);
+        appContext.registerHistoricalDataRequest(reqId, contract.symbol());
+
 
         logger.info("Dispatching generalized historical data request for {}: ReqId={}, Duration={}, BarSize={}",
                 contract.symbol(), reqId, durationStr, barSizeSetting);
@@ -953,6 +956,46 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
             Thread.currentThread().interrupt();
         }
         logger.info("IBClient shutdown complete.");
+    }
+
+    private com.zerodhatech.models.HistoricalData convertIbBarToHistoricalData(Bar bar, int formatDate, String symbol) {
+        com.zerodhatech.models.HistoricalData historicalData = new com.zerodhatech.models.HistoricalData();
+
+        try {
+            // Handle timestamp conversion based on formatDate
+            if (formatDate == 2) {
+                // Epoch seconds format
+                historicalData.timeStamp = bar.time();
+            } else {
+                // String date format - convert to epoch seconds
+                String timeStr = bar.time().trim();
+
+                if (timeStr.length() == 8) { // "20231215" format
+                    LocalDate date = LocalDate.parse(timeStr, DateTimeFormatter.BASIC_ISO_DATE);
+                    historicalData.timeStamp = String.valueOf(date.atStartOfDay(ZoneId.of("America/New_York"))
+                            .toEpochSecond());
+                } else if (timeStr.contains(" ")) { // "20231215 15:30:00" format
+                    LocalDateTime dateTime = LocalDateTime.parse(timeStr,
+                            DateTimeFormatter.ofPattern("yyyyMMdd HH:mm:ss"));
+                    historicalData.timeStamp = String.valueOf(dateTime.atZone(ZoneId.of("America/New_York"))
+                            .toEpochSecond());
+                } else {
+                    logger.warn("Unknown timestamp format for {}: '{}'", symbol, timeStr);
+                    historicalData.timeStamp = bar.time(); // fallback
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Could not parse timestamp for {}: '{}'. Error: {}", symbol, bar.time(), e.getMessage());
+            historicalData.timeStamp = bar.time(); // fallback
+        }
+
+        historicalData.open = bar.open();
+        historicalData.high = bar.high();
+        historicalData.low = bar.low();
+        historicalData.close = bar.close();
+        historicalData.volume = bar.volume();
+
+        return historicalData;
     }
     // ... other EWrapper methods
 }

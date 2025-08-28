@@ -137,6 +137,8 @@ public class AppContext {
             // Level 2: Create services
             // Pass null for TickProcessor to break circular dependency, it will be set later.
             IbkrMarketDataService ibkrMarketDataService = new IbkrMarketDataService(this, this.instrumentRegistry, this.tickAggregator, null, this.marketDataHandler);
+            ibkrMarketDataService.connect(twsHost, twsPort, twsClientId);
+            ibkrMarketDataService.startMessageProcessing();
             this.marketDataService = ibkrMarketDataService;
             this.clientSocket = ibkrMarketDataService.getClientSocket();
             this.readerSignal = ibkrMarketDataService.getReaderSignal();
