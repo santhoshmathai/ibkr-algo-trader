@@ -14,7 +14,7 @@ public class IBAppMain {
 
     public static void main(String[] args) {
         logger.info("Application starting...");
-        AppContext appContext = new AppContext(true);
+        AppContext appContext = new AppContext(false);
         logger.info("AppContext initialized.");
 
         appContext.start();
