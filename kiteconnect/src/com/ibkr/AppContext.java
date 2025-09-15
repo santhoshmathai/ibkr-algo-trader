@@ -111,34 +111,51 @@ public class AppContext {
         this.top100USStocks = loadTop100USStocks(properties);
 
         // --- Component Initialization ---
+        logger.info("Initializing AppContext components...");
 
         // Level 0: Components with no internal dependencies
+        logger.info("Initializing MeterRegistry...");
         this.meterRegistry = new SimpleMeterRegistry();
+        logger.info("Initializing InstrumentRegistry...");
         this.instrumentRegistry = new InstrumentRegistry(this);
+        logger.info("Initializing MarketDataHandler...");
         this.marketDataHandler = new MarketDataHandler();
+        logger.info("Initializing TickAggregator...");
         this.tickAggregator = new TickAggregator(this.instrumentRegistry);
+        logger.info("Initializing SupportResistanceAnalyzer...");
         this.supportResistanceAnalyzer = new SupportResistanceAnalyzer(this);
+        logger.info("Initializing MarketSentimentAnalyzer...");
         this.marketSentimentAnalyzer = new MarketSentimentAnalyzer(this, this.top100USStocks, openingObservationMinutes, LocalTime.of(9, 30));
+        logger.info("Initializing CircuitBreakerMonitor...");
         this.circuitBreakerMonitor = new CircuitBreakerMonitor();
+        logger.info("Initializing DarkPoolScanner...");
         this.darkPoolScanner = new DarkPoolScanner();
+        logger.info("Initializing LiquidityMonitor...");
         this.liquidityMonitor = new LiquidityMonitor();
+        logger.info("Initializing VWAPAnalyzer...");
         this.vwapAnalyzer = new com.ibkr.indicators.VWAPAnalyzer();
+        logger.info("Initializing VolumeAnalyzer...");
         this.volumeAnalyzer = new com.ibkr.indicators.VolumeAnalyzer();
+        logger.info("Initializing SectorStrengthAnalyzer...");
         this.sectorStrengthAnalyzer = new SectorStrengthAnalyzer(getSectorToStocks(), getSymbolToSector());
 
         // Level 1: Components that depend on Level 0
+        logger.info("Initializing RiskManager...");
         this.riskManager = new com.ibkr.risk.RiskManager(this.liquidityMonitor, this.vwapAnalyzer);
+        logger.info("Initializing BreakoutSignalGenerator...");
         this.breakoutSignalGenerator = new com.ibkr.signal.BreakoutSignalGenerator(this.vwapAnalyzer, this.volumeAnalyzer, this.sectorStrengthAnalyzer, this.supportResistanceAnalyzer);
+        logger.info("Initializing PortfolioManager...");
         this.portfolioManager = new PortfolioManager();
+        logger.info("Initializing IBOrderExecutor...");
         this.ibOrderExecutor = new IBOrderExecutor(this.circuitBreakerMonitor, this.darkPoolScanner, this.instrumentRegistry, this.portfolioManager);
+        logger.info("Initializing OrderService...");
         OrderService orderService = new IbkrOrderService(this.ibOrderExecutor);
+        logger.info("AppContext components initialized.");
 
         if (!isBacktest) {
             // Level 2: Create services
             // Pass null for TickProcessor to break circular dependency, it will be set later.
             IbkrMarketDataService ibkrMarketDataService = new IbkrMarketDataService(this, this.instrumentRegistry, this.tickAggregator, null, this.marketDataHandler);
-            ibkrMarketDataService.connect(twsHost, twsPort, twsClientId);
-            ibkrMarketDataService.startMessageProcessing();
             this.marketDataService = ibkrMarketDataService;
             this.clientSocket = ibkrMarketDataService.getClientSocket();
             this.readerSignal = ibkrMarketDataService.getReaderSignal();
@@ -188,7 +205,7 @@ public class AppContext {
             }, delay, TimeUnit.MILLISECONDS);
 
         } else {
-            this.marketDataService = null;
+            this.marketDataService = new BacktestMarketDataService("stockdata/MW-NIFTY-500-01-Nov-2024.csv");
             this.tradingEngine = null;
             this.tickProcessor = null;
             this.stockScreener = null;
@@ -279,5 +296,40 @@ public class AppContext {
             this.marketDataHandler.shutdown();
         }
         logger.info("AppContext shutdown process completed.");
+    }
+
+    public void start() {
+        if (this.marketDataService instanceof IbkrMarketDataService) {
+            IbkrMarketDataService ibkrMarketDataService = (IbkrMarketDataService) this.marketDataService;
+            logger.info("Starting application and connecting to TWS...");
+            ibkrMarketDataService.connect(getTwsHost(), getTwsPort(), getTwsClientId(), this::onConnected);
+        } else if (this.marketDataService instanceof BacktestMarketDataService) {
+            logger.info("Starting application in backtest mode...");
+            // In backtest mode, we can directly call onConnected or a similar method
+            // as there is no real connection to wait for.
+            onConnected();
+        } else {
+            logger.error("MarketDataService is not an instance of IbkrMarketDataService or BacktestMarketDataService, cannot start.");
+        }
+    }
+
+    private void onConnected() {
+        logger.info("Successfully connected to TWS. Proceeding with application setup.");
+
+        if (this.marketDataService instanceof IbkrMarketDataService) {
+            IbkrMarketDataService ibkrMarketDataService = (IbkrMarketDataService) this.marketDataService;
+
+            ibkrMarketDataService.initiateHistoricalDataFetch();
+
+            logger.info("Subscribing to market data for top 100 US stocks.");
+            ibkrMarketDataService.subscribeToSymbols(getTop100USStocks());
+
+        } else if (this.marketDataService instanceof BacktestMarketDataService) {
+            // Logic for backtesting
+            logger.info("Backtest mode: skipping real-time subscriptions and historical data fetch via TWS.");
+            // You might want to load historical data from a file here.
+        } else {
+            logger.error("MarketDataService is not an instance of IbkrMarketDataService or BacktestMarketDataService, cannot subscribe to symbols.");
+        }
     }
 }
