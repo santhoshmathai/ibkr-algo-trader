@@ -99,6 +99,7 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
         if (!clientSocket.isConnected()) {
             logger.info("Connecting to {}:{} with clientId: {}", host, port, clientId);
             clientSocket.eConnect(host, port, clientId);
+            startMessageProcessing();
             if (clientSocket.isConnected()) {
                 logger.info("Successfully connected (according to isConnected()). Awaiting connectAck.");
             } else {
@@ -804,7 +805,6 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
     public void connectAck() {
         isConnected = true;
         logger.info("Connect ACK received.");
-        startMessageProcessing();
         if (onConnectCallback != null) {
             new Thread(onConnectCallback).start();
         }

@@ -319,6 +319,7 @@ public class AppContext {
         if (this.marketDataService instanceof IbkrMarketDataService) {
             IbkrMarketDataService ibkrMarketDataService = (IbkrMarketDataService) this.marketDataService;
 
+            tradingEngine.loadHistoricalData();
             ibkrMarketDataService.initiateHistoricalDataFetch();
 
             logger.info("Subscribing to market data for top 100 US stocks.");

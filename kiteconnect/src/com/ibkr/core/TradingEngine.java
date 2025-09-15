@@ -114,6 +114,10 @@ public class TradingEngine {
         this.historicalVolumeService = new HistoricalVolumeService(historicalDataService);
         this.volumeSpikeAnalyzer = new VolumeSpikeAnalyzer(this.historicalVolumeService);
 
+        logger.info("TradingEngine initialized, including OrbStrategy, IntradayPriceActionAnalyzer, and VolumeSpikeAnalyzer.");
+    }
+
+    public void loadHistoricalData() {
         // Load historical volume data at startup using the defined list of stocks from AppContext
         Set<String> symbolsToMonitor = appContext.getTop100USStocks();
         if (symbolsToMonitor != null && !symbolsToMonitor.isEmpty()) {
@@ -133,8 +137,6 @@ public class TradingEngine {
         } else {
             logger.warn("No symbols found from AppContext.getTop100USStocks() at startup. Historical volume data will not be pre-loaded.");
         }
-
-        logger.info("TradingEngine initialized, including OrbStrategy, IntradayPriceActionAnalyzer, and VolumeSpikeAnalyzer.");
     }
 
     public void initializeServices(MarketDataService marketDataService, StockScreener stockScreener) {
