@@ -41,6 +41,7 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
     private MarketDataHandler marketDataHandler;
     private final AppContext appContext; // Added
     private volatile boolean isConnected = false;
+    private Runnable onConnectCallback;
 
     // For historical data fetching
     private final Map<Integer, PreviousDayData> historicalDataRequests = new ConcurrentHashMap<>();
@@ -90,6 +91,11 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
 
     @Override
     public void connect(String host, int port, int clientId) {
+        connect(host, port, clientId, null);
+    }
+
+    public void connect(String host, int port, int clientId, Runnable onConnect) {
+        this.onConnectCallback = onConnect;
         if (!clientSocket.isConnected()) {
             logger.info("Connecting to {}:{} with clientId: {}", host, port, clientId);
             clientSocket.eConnect(host, port, clientId);
@@ -100,6 +106,9 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
             }
         } else {
             logger.info("Already connected or connection attempt in progress.");
+            if (onConnectCallback != null) {
+                onConnectCallback.run();
+            }
         }
     }
 
@@ -795,7 +804,10 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
     public void connectAck() {
         isConnected = true;
         logger.info("Connect ACK received.");
-        // This is a good place to confirm connection success if further actions depend on it.
+        startMessageProcessing();
+        if (onConnectCallback != null) {
+            new Thread(onConnectCallback).start();
+        }
     }
 
     @Override
@@ -963,6 +975,20 @@ public class IbkrMarketDataService implements EWrapper, MarketDataService {
             Thread.currentThread().interrupt();
         }
         logger.info("IBClient shutdown complete.");
+    }
+
+    public void subscribeToSymbols(Set<String> symbols) {
+        if (!isConnected()) {
+            logger.error("Cannot subscribe to symbols. Not connected to TWS.");
+            return;
+        }
+        logger.info("Subscribing to market data for {} symbols.", symbols.size());
+        for (String symbol : symbols) {
+            Contract contract = createStockContract(symbol, "SMART");
+            int tickerId = instrumentRegistry.registerInstrument(contract);
+            logger.info("Requesting market data for symbol '{}' with tickerId {}", symbol, tickerId);
+            clientSocket.reqMktData(tickerId, contract, "", false, false, null);
+        }
     }
 
     private HistoricalData convertIbBarToHistoricalData(Bar bar, int formatDate, String symbol) {
